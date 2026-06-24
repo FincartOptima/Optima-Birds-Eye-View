@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Client Factsheet Viewer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>Client Factsheet Viewer</h1>
+                <p class="subtitle">Credent Asset Management Services</p>
+            </div>
+        </header>
+
+        <!-- File Upload Section -->
+        <div class="upload-section" id="uploadSection">
+            <div class="upload-box">
+                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <h3>Upload Trade Allocation Master File</h3>
+                <p>Select your Excel file (.xlsx) to get started</p>
+                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
+                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
+                    Choose File
+                </button>
+                <p class="file-info" id="fileInfo"></p>
+            </div>
+        </div>
+
+        <!-- Main Content Section (hidden initially) -->
+        <div class="main-section" id="mainSection" style="display: none;">
+            <!-- Toolbar -->
+            <div class="toolbar">
+                <div class="toolbar-left">
+                    <button class="btn btn-secondary" onclick="resetApp()">
+                        ↻ Upload Different File
+                    </button>
+                </div>
+                <div class="toolbar-center">
+                    <div class="search-box">
+                        <label for="clientSelect">Select Client:</label>
+                        <div class="select-wrapper">
+                            <select id="clientSelect" onchange="loadClient()">
+                                <option value="">Loading clients...</option>
+                            </select>
+                            <input type="text" id="clientSearch" placeholder="Search client..." class="search-input">
+                        </div>
+                    </div>
+                </div>
+                <div class="toolbar-right">
+                    <button class="btn btn-success" id="downloadBtn" onclick="downloadPDF()">
+                        ⬇ Download PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="content-wrapper">
+                <!-- Sidebar with client stats -->
+                <aside class="sidebar">
+                    <div class="client-card" id="clientCard">
+                        <h2 id="clientName">---</h2>
+                        <p class="ucc" id="clientUCC">UCC: ---</p>
+                        <hr>
+                        <div class="stat-group">
+                            <div class="stat">
+                                <span class="stat-label">Inception Date</span>
+                                <span class="stat-value" id="inceptionDate">---</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-label">Report Date</span>
+                                <span class="stat-value" id="reportDate">---</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KPI Cards -->
+                    <div class="kpi-section">
+                        <div class="kpi-card">
+                            <span class="kpi-label">Cost Value</span>
+                            <span class="kpi-value" id="costValue">₹0</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Current Value</span>
+                            <span class="kpi-value" id="currentValue">₹0</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Total P/L</span>
+                            <span class="kpi-value" id="totalPL">₹0</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Portfolio XIRR</span>
+                            <span class="kpi-value" id="portfolioXIRR">N/A</span>
+                        </div>
+                        <div class="kpi-card">
+                            <span class="kpi-label">Benchmark XIRR</span>
+                            <span class="kpi-value" id="benchmarkXIRR">N/A</span>
+                        </div>
+                    </div>
+                </aside>
+
+                <!-- Main Content -->
+                <main class="main-content">
+                    <!-- About Section -->
+                    <section class="section">
+                        <h3 class="section-title">About the Strategy</h3>
+                        <div class="about-text">
+                            <p><strong>Multi-Asset Strategic Allocation</strong> • Direct Plan Mutual Fund PMS</p>
+                            <p><strong>Investment Approach:</strong> Strategic multi-asset allocation across Indian equity, international equity, debt, gold and arbitrage with quarterly rebalancing anchored to a defined benchmark for measurable accountability.</p>
+                        </div>
+                    </section>
+
+                    <!-- Categories Table -->
+                    <section class="section">
+                        <h3 class="section-title">Asset Allocation</h3>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Category</th>
+                                        <th>Cost Value</th>
+                                        <th>Current Value</th>
+                                        <th>Allocation %</th>
+                                        <th>Unrealized P/L</th>
+                                        <th>Total P/L</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="categoriesTable">
+                                    <tr>
+                                        <td colspan="6" class="loading">Loading data...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Top 5 Holdings -->
+                    <section class="section">
+                        <h3 class="section-title">Top 5 Holdings</h3>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Rank</th>
+                                        <th>Fund Name</th>
+                                        <th>Category</th>
+                                        <th>Current Value</th>
+                                        <th>Allocation %</th>
+                                        <th>Total P/L</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="topHoldingsTable">
+                                    <tr>
+                                        <td colspan="6" class="loading">Loading data...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- All Holdings -->
+                    <section class="section">
+                        <h3 class="section-title">All Holdings</h3>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Fund Name</th>
+                                        <th>Category</th>
+                                        <th>ISIN</th>
+                                        <th>Units</th>
+                                        <th>Cost Value</th>
+                                        <th>Current NAV</th>
+                                        <th>Current Value</th>
+                                        <th>Allocation %</th>
+                                        <th>Total P/L</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="allHoldingsTable">
+                                    <tr>
+                                        <td colspan="9" class="loading">Loading data...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                </main>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div class="modal" id="loadingModal" style="display: none;">
+            <div class="modal-content">
+                <div class="spinner"></div>
+                <p id="loadingText">Processing file...</p>
+            </div>
+        </div>
+
+        <!-- Error Modal -->
+        <div class="modal" id="errorModal" style="display: none;">
+            <div class="modal-content error">
+                <h3>Error</h3>
+                <p id="errorText"></p>
+                <button class="btn btn-primary" onclick="closeErrorModal()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+# Uploaded and generated files
+uploads/
+generated_pdfs/
+Client_Factsheets/
+
+# Sensitive data files
+Trade Allocation_Master.xlsx
+Current_NAVs.xlsx
+Client_Factsheet_Report.xlsx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.env
+venv/
+env/
+
+# OS
+.DS_Store
+desktop.ini
+Thumbs.db

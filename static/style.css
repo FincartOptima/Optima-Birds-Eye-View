@@ -1,0 +1,665 @@
+/* ============================================================
+   Global Styles
+   ============================================================ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --navy: #1F4E78;
+    --dark-navy: #152D44;
+    --light-blue: #EBF0F7;
+    --light-bg: #F0F0EC;
+    --border-color: #C8D4E3;
+    --text-dark: #2C3E50;
+    --text-med: #5A6C7E;
+    --text-light: #8899AA;
+    --success: #1B7A2F;
+    --danger: #C0392B;
+    --white: #FFFFFF;
+    --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.6;
+    color: var(--text-dark);
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+/* ============================================================
+   Header
+   ============================================================ */
+
+.header {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--dark-navy) 100%);
+    color: var(--white);
+    padding: 40px 20px;
+    text-align: center;
+    box-shadow: var(--shadow-lg);
+    margin-bottom: 30px;
+}
+
+.header-content h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 10px;
+}
+
+.header-content .subtitle {
+    font-size: 1rem;
+    opacity: 0.9;
+    letter-spacing: 0.5px;
+}
+
+/* ============================================================
+   Upload Section
+   ============================================================ */
+
+.upload-section {
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.upload-box {
+    background: var(--white);
+    border: 3px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 60px 40px;
+    text-align: center;
+    transition: all 0.3s ease;
+    box-shadow: var(--shadow);
+}
+
+.upload-box:hover {
+    border-color: var(--navy);
+    background: var(--light-blue);
+    transform: translateY(-2px);
+}
+
+.upload-icon {
+    width: 64px;
+    height: 64px;
+    color: var(--navy);
+    margin-bottom: 20px;
+    stroke-width: 1.5;
+}
+
+.upload-box h3 {
+    font-size: 1.5rem;
+    color: var(--navy);
+    margin-bottom: 10px;
+}
+
+.upload-box p {
+    color: var(--text-med);
+    margin-bottom: 20px;
+}
+
+.file-info {
+    margin-top: 15px;
+    color: var(--success);
+    font-weight: 500;
+    font-size: 0.95rem;
+}
+
+/* ============================================================
+   Buttons
+   ============================================================ */
+
+.btn {
+    padding: 12px 32px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: inline-block;
+    text-decoration: none;
+}
+
+.btn-primary {
+    background: var(--navy);
+    color: var(--white);
+}
+
+.btn-primary:hover {
+    background: var(--dark-navy);
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: var(--navy);
+    border: 2px solid var(--navy);
+}
+
+.btn-secondary:hover {
+    background: var(--light-blue);
+}
+
+.btn-success {
+    background: var(--success);
+    color: var(--white);
+}
+
+.btn-success:hover {
+    background: #157A2F;
+    box-shadow: var(--shadow-lg);
+    transform: translateY(-2px);
+}
+
+/* ============================================================
+   Toolbar
+   ============================================================ */
+
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 30px;
+    background: var(--white);
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 30px;
+    box-shadow: var(--shadow);
+    flex-wrap: wrap;
+}
+
+.toolbar-left,
+.toolbar-right {
+    display: flex;
+    gap: 15px;
+}
+
+.toolbar-center {
+    flex: 1;
+    min-width: 300px;
+}
+
+.search-box {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.search-box label {
+    font-weight: 600;
+    color: var(--text-dark);
+    font-size: 0.9rem;
+}
+
+.select-wrapper {
+    position: relative;
+    display: flex;
+    gap: 10px;
+}
+
+#clientSelect {
+    flex: 1;
+    padding: 10px 15px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background: var(--white);
+    color: var(--text-dark);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+#clientSelect:hover,
+#clientSelect:focus {
+    border-color: var(--navy);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(31, 78, 120, 0.1);
+}
+
+.search-input {
+    padding: 10px 15px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    min-width: 200px;
+    transition: all 0.3s ease;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: var(--navy);
+    box-shadow: 0 0 0 3px rgba(31, 78, 120, 0.1);
+}
+
+@media (max-width: 768px) {
+    .toolbar {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .toolbar-left,
+    .toolbar-center,
+    .toolbar-right {
+        width: 100%;
+    }
+
+    .select-wrapper {
+        flex-direction: column;
+    }
+
+    .search-input {
+        min-width: 100%;
+    }
+}
+
+/* ============================================================
+   Content Wrapper (Sidebar + Main)
+   ============================================================ */
+
+.content-wrapper {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    gap: 30px;
+    margin-bottom: 40px;
+}
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+@media (max-width: 1024px) {
+    .content-wrapper {
+        grid-template-columns: 1fr;
+    }
+
+    .sidebar {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .client-card {
+        flex: 1;
+        min-width: 250px;
+    }
+
+    .kpi-section {
+        flex: 1;
+        min-width: 250px;
+    }
+}
+
+/* ============================================================
+   Client Card
+   ============================================================ */
+
+.client-card {
+    background: var(--white);
+    border-left: 4px solid var(--navy);
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+}
+
+.client-card h2 {
+    font-size: 1.4rem;
+    color: var(--navy);
+    margin-bottom: 5px;
+}
+
+.client-card .ucc {
+    color: var(--text-med);
+    font-size: 0.9rem;
+    margin-bottom: 15px;
+}
+
+.client-card hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 15px 0;
+}
+
+.stat-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.stat-label {
+    color: var(--text-light);
+    font-weight: 500;
+}
+
+.stat-value {
+    color: var(--text-dark);
+    font-weight: 600;
+}
+
+/* ============================================================
+   KPI Cards
+   ============================================================ */
+
+.kpi-section {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 15px;
+}
+
+.kpi-card {
+    background: var(--light-blue);
+    padding: 20px;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: all 0.3s ease;
+}
+
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+    background: var(--white);
+}
+
+.kpi-label {
+    font-size: 0.8rem;
+    color: var(--text-light);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.kpi-value {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--navy);
+}
+
+.kpi-value.positive {
+    color: var(--success);
+}
+
+.kpi-value.negative {
+    color: var(--danger);
+}
+
+/* ============================================================
+   Sections
+   ============================================================ */
+
+.section {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+}
+
+.section-title {
+    font-size: 1.3rem;
+    color: var(--navy);
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid var(--border-color);
+    font-weight: 700;
+}
+
+.about-text {
+    color: var(--text-med);
+    line-height: 1.8;
+}
+
+.about-text p {
+    margin-bottom: 12px;
+}
+
+.about-text strong {
+    color: var(--navy);
+}
+
+/* ============================================================
+   Tables
+   ============================================================ */
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+.data-table thead {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--dark-navy) 100%);
+    color: var(--white);
+}
+
+.data-table th {
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.data-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--text-dark);
+}
+
+.data-table tbody tr:nth-child(even) {
+    background: var(--light-bg);
+}
+
+.data-table tbody tr:hover {
+    background: var(--light-blue);
+    transition: background 0.2s ease;
+}
+
+.data-table td.loading {
+    text-align: center;
+    color: var(--text-light);
+    padding: 30px 15px;
+    font-style: italic;
+}
+
+.data-table .number {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    font-weight: 500;
+}
+
+.data-table .positive {
+    color: var(--success);
+    font-weight: 600;
+}
+
+.data-table .negative {
+    color: var(--danger);
+    font-weight: 600;
+}
+
+/* ============================================================
+   Modals
+   ============================================================ */
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease;
+}
+
+.modal-content {
+    background: var(--white);
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    max-width: 500px;
+    width: 90%;
+    text-align: center;
+}
+
+.modal-content.error {
+    border-left: 4px solid var(--danger);
+}
+
+.modal-content h3 {
+    color: var(--navy);
+    margin-bottom: 15px;
+    font-size: 1.3rem;
+}
+
+.modal-content p {
+    color: var(--text-med);
+    margin-bottom: 25px;
+    line-height: 1.6;
+}
+
+/* ============================================================
+   Spinner
+   ============================================================ */
+
+.spinner {
+    border: 4px solid var(--light-blue);
+    border-top: 4px solid var(--navy);
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ============================================================
+   Utility Classes
+   ============================================================ */
+
+.text-center {
+    text-align: center;
+}
+
+.text-right {
+    text-align: right;
+}
+
+.mt-20 {
+    margin-top: 20px;
+}
+
+.mb-20 {
+    margin-bottom: 20px;
+}
+
+/* ============================================================
+   Responsive Design
+   ============================================================ */
+
+@media (max-width: 768px) {
+    .header-content h1 {
+        font-size: 1.8rem;
+    }
+
+    .upload-box {
+        padding: 40px 25px;
+    }
+
+    .data-table {
+        font-size: 0.85rem;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 10px 8px;
+    }
+
+    .btn {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .header-content h1 {
+        font-size: 1.4rem;
+    }
+
+    .header-content .subtitle {
+        font-size: 0.85rem;
+    }
+
+    .upload-box {
+        padding: 30px 15px;
+    }
+
+    .toolbar {
+        flex-direction: column;
+        gap: 10px;
+        padding: 15px;
+    }
+
+    .toolbar-left,
+    .toolbar-center,
+    .toolbar-right {
+        width: 100%;
+    }
+
+    .section {
+        padding: 20px;
+    }
+
+    .data-table {
+        font-size: 0.75rem;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 8px 5px;
+    }
+}
