@@ -578,6 +578,173 @@ body {
 }
 
 /* ============================================================
+   Tab Bar
+   ============================================================ */
+
+.tab-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.tab-btn {
+    padding: 12px 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-med);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+    color: var(--navy);
+    background: var(--light-blue);
+}
+
+.tab-btn.active {
+    color: var(--navy);
+    border-bottom-color: var(--navy);
+    background: var(--white);
+}
+
+/* ============================================================
+   Master Dashboard
+   ============================================================ */
+
+.master-content {
+    display: flex;
+    flex-direction: column;
+    gap: 30px;
+}
+
+.section-subtitle {
+    color: var(--text-med);
+    font-size: 0.9rem;
+    margin-top: -10px;
+    margin-bottom: 15px;
+    font-style: italic;
+}
+
+/* Performance tables */
+.perf-table .cat-group-header td {
+    background: var(--light-blue);
+    color: var(--navy);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.5px;
+    padding: 10px 15px;
+}
+
+.perf-table .bse-row td {
+    background: var(--dark-navy);
+    color: var(--white);
+    font-weight: 700;
+    border-top: 2px solid var(--navy);
+}
+
+.perf-table .bse-row td.positive,
+.perf-table .bse-row td.negative {
+    color: var(--white);
+}
+
+.perf-table .na-cell {
+    color: var(--text-light);
+    font-style: italic;
+}
+
+.perf-table .fund-name-cell {
+    font-size: 0.9rem;
+}
+
+/* Cash summary cards */
+.cash-summary-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.cash-card {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--dark-navy) 100%);
+    color: var(--white);
+    padding: 25px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.cash-label {
+    font-size: 0.85rem;
+    opacity: 0.85;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.cash-amount {
+    font-size: 1.8rem;
+    font-weight: 700;
+}
+
+.cash-pct {
+    font-size: 0.95rem;
+    opacity: 0.9;
+}
+
+@media (max-width: 768px) {
+    .cash-summary-cards { grid-template-columns: 1fr; }
+}
+
+/* Matrix tables (heatmap) */
+.matrix-table {
+    font-size: 0.85rem;
+}
+
+.matrix-table th.client-col {
+    min-width: 90px;
+    text-align: center;
+    font-size: 0.8rem;
+    padding: 10px 6px;
+    white-space: normal;
+    word-wrap: break-word;
+    vertical-align: bottom;
+}
+
+.matrix-table td.matrix-cell {
+    text-align: center;
+    font-family: 'Courier New', monospace;
+    font-weight: 600;
+    padding: 8px 6px;
+    border: 1px solid rgba(200, 212, 227, 0.4);
+    transition: transform 0.1s ease;
+}
+
+.matrix-table td.matrix-cell:hover {
+    transform: scale(1.08);
+    z-index: 2;
+    position: relative;
+    box-shadow: var(--shadow);
+}
+
+.matrix-table td.zero-cell {
+    color: var(--text-light);
+    background: #fafafa;
+    font-style: italic;
+}
+
+.matrix-table td.fund-name-cell {
+    font-weight: 500;
+    background: var(--white);
+    position: sticky;
+    left: 0;
+}
+
+/* ============================================================
    Utility Classes
    ============================================================ */
 

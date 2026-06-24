@@ -70,8 +70,9 @@ def upload_file():
         # Build reports
         reports = build_client_reports(master, transactions, bse_prices, current_navs, category_overrides)
 
-        # Cache reports
+        # Cache reports and bse_prices for master tab
         reports_cache['reports'] = reports
+        reports_cache['bse_prices'] = bse_prices
         reports_cache['file_path'] = filepath
         reports_cache['upload_time'] = datetime.now().isoformat()
 
@@ -235,6 +236,27 @@ def download_client_pdf(client_id):
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Error generating PDF: {str(e)}'}), 500
+
+
+@app.route('/api/master')
+def get_master():
+    """Return aggregated master dashboard data."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+
+    try:
+        from compute_master import get_master_data
+        from create_client_factsheet_report import REPORT_DATE
+        data = get_master_data(
+            reports_cache['reports'],
+            reports_cache['bse_prices'],
+            REPORT_DATE,
+        )
+        return jsonify(data)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 def format_currency(value):

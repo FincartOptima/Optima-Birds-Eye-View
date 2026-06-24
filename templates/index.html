@@ -36,6 +36,7 @@
 
         <!-- Main Content Section (hidden initially) -->
         <div class="main-section" id="mainSection" style="display: none;">
+
             <!-- Toolbar -->
             <div class="toolbar">
                 <div class="toolbar-left">
@@ -43,7 +44,7 @@
                         ↻ Upload Different File
                     </button>
                 </div>
-                <div class="toolbar-center">
+                <div class="toolbar-center" id="toolbarCenter">
                     <div class="search-box">
                         <label for="clientSelect">Select Client:</label>
                         <div class="select-wrapper">
@@ -54,149 +55,222 @@
                         </div>
                     </div>
                 </div>
-                <div class="toolbar-right">
+                <div class="toolbar-right" id="toolbarRight">
                     <button class="btn btn-success" id="downloadBtn" onclick="downloadPDF()">
                         ⬇ Download PDF
                     </button>
                 </div>
             </div>
 
-            <!-- Content Area -->
-            <div class="content-wrapper">
-                <!-- Sidebar with client stats -->
-                <aside class="sidebar">
-                    <div class="client-card" id="clientCard">
-                        <h2 id="clientName">---</h2>
-                        <p class="ucc" id="clientUCC">UCC: ---</p>
-                        <hr>
-                        <div class="stat-group">
-                            <div class="stat">
-                                <span class="stat-label">Inception Date</span>
-                                <span class="stat-value" id="inceptionDate">---</span>
-                            </div>
-                            <div class="stat">
-                                <span class="stat-label">Report Date</span>
-                                <span class="stat-value" id="reportDate">---</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- KPI Cards -->
-                    <div class="kpi-section">
-                        <div class="kpi-card">
-                            <span class="kpi-label">Cost Value</span>
-                            <span class="kpi-value" id="costValue">₹0</span>
-                        </div>
-                        <div class="kpi-card">
-                            <span class="kpi-label">Current Value</span>
-                            <span class="kpi-value" id="currentValue">₹0</span>
-                        </div>
-                        <div class="kpi-card">
-                            <span class="kpi-label">Total P/L</span>
-                            <span class="kpi-value" id="totalPL">₹0</span>
-                        </div>
-                        <div class="kpi-card">
-                            <span class="kpi-label">Portfolio XIRR</span>
-                            <span class="kpi-value" id="portfolioXIRR">N/A</span>
-                        </div>
-                        <div class="kpi-card">
-                            <span class="kpi-label">Benchmark XIRR</span>
-                            <span class="kpi-value" id="benchmarkXIRR">N/A</span>
-                        </div>
-                    </div>
-                </aside>
-
-                <!-- Main Content -->
-                <main class="main-content">
-                    <!-- About Section -->
-                    <section class="section">
-                        <h3 class="section-title">About the Strategy</h3>
-                        <div class="about-text">
-                            <p><strong>Multi-Asset Strategic Allocation</strong> • Direct Plan Mutual Fund PMS</p>
-                            <p><strong>Investment Approach:</strong> Strategic multi-asset allocation across Indian equity, international equity, debt, gold and arbitrage with quarterly rebalancing anchored to a defined benchmark for measurable accountability.</p>
-                        </div>
-                    </section>
-
-                    <!-- Categories Table -->
-                    <section class="section">
-                        <h3 class="section-title">Asset Allocation</h3>
-                        <div class="table-responsive">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Category</th>
-                                        <th>Cost Value</th>
-                                        <th>Current Value</th>
-                                        <th>Allocation %</th>
-                                        <th>Unrealized P/L</th>
-                                        <th>Total P/L</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="categoriesTable">
-                                    <tr>
-                                        <td colspan="6" class="loading">Loading data...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-
-                    <!-- Top 5 Holdings -->
-                    <section class="section">
-                        <h3 class="section-title">Top 5 Holdings</h3>
-                        <div class="table-responsive">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Rank</th>
-                                        <th>Fund Name</th>
-                                        <th>Category</th>
-                                        <th>Current Value</th>
-                                        <th>Allocation %</th>
-                                        <th>Total P/L</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="topHoldingsTable">
-                                    <tr>
-                                        <td colspan="6" class="loading">Loading data...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-
-                    <!-- All Holdings -->
-                    <section class="section">
-                        <h3 class="section-title">All Holdings</h3>
-                        <div class="table-responsive">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Fund Name</th>
-                                        <th>Category</th>
-                                        <th>ISIN</th>
-                                        <th>Units</th>
-                                        <th>Cost Value</th>
-                                        <th>Current NAV</th>
-                                        <th>Current Value</th>
-                                        <th>Allocation %</th>
-                                        <th>Total P/L</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="allHoldingsTable">
-                                    <tr>
-                                        <td colspan="9" class="loading">Loading data...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-
-                </main>
+            <!-- Tab Bar -->
+            <div class="tab-bar">
+                <button class="tab-btn active" id="tabClientBtn" onclick="switchTab('client')">Client View</button>
+                <button class="tab-btn" id="tabMasterBtn" onclick="switchTab('master')">Master Dashboard</button>
             </div>
-        </div>
 
-        <!-- Loading Indicator -->
+            <!-- CLIENT TAB CONTENT -->
+            <div id="clientTabContent">
+                <div class="content-wrapper">
+                    <!-- Sidebar with client stats -->
+                    <aside class="sidebar">
+                        <div class="client-card" id="clientCard">
+                            <h2 id="clientName">---</h2>
+                            <p class="ucc" id="clientUCC">UCC: ---</p>
+                            <hr>
+                            <div class="stat-group">
+                                <div class="stat">
+                                    <span class="stat-label">Inception Date</span>
+                                    <span class="stat-value" id="inceptionDate">---</span>
+                                </div>
+                                <div class="stat">
+                                    <span class="stat-label">Report Date</span>
+                                    <span class="stat-value" id="reportDate">---</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- KPI Cards -->
+                        <div class="kpi-section">
+                            <div class="kpi-card">
+                                <span class="kpi-label">Cost Value</span>
+                                <span class="kpi-value" id="costValue">₹0</span>
+                            </div>
+                            <div class="kpi-card">
+                                <span class="kpi-label">Current Value</span>
+                                <span class="kpi-value" id="currentValue">₹0</span>
+                            </div>
+                            <div class="kpi-card">
+                                <span class="kpi-label">Total P/L</span>
+                                <span class="kpi-value" id="totalPL">₹0</span>
+                            </div>
+                            <div class="kpi-card">
+                                <span class="kpi-label">Portfolio XIRR</span>
+                                <span class="kpi-value" id="portfolioXIRR">N/A</span>
+                            </div>
+                            <div class="kpi-card">
+                                <span class="kpi-label">Benchmark XIRR</span>
+                                <span class="kpi-value" id="benchmarkXIRR">N/A</span>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- Main Content -->
+                    <main class="main-content">
+                        <!-- About Section -->
+                        <section class="section">
+                            <h3 class="section-title">About the Strategy</h3>
+                            <div class="about-text">
+                                <p><strong>Multi-Asset Strategic Allocation</strong> &bull; Direct Plan Mutual Fund PMS</p>
+                                <p><strong>Investment Approach:</strong> Strategic multi-asset allocation across Indian equity, international equity, debt, gold and arbitrage with quarterly rebalancing anchored to a defined benchmark for measurable accountability.</p>
+                            </div>
+                        </section>
+
+                        <!-- Categories Table -->
+                        <section class="section">
+                            <h3 class="section-title">Asset Allocation</h3>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Category</th>
+                                            <th>Cost Value</th>
+                                            <th>Current Value</th>
+                                            <th>Allocation %</th>
+                                            <th>Unrealized P/L</th>
+                                            <th>Total P/L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="categoriesTable">
+                                        <tr><td colspan="6" class="loading">Loading data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- Top 5 Holdings -->
+                        <section class="section">
+                            <h3 class="section-title">Top 5 Holdings</h3>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Rank</th>
+                                            <th>Fund Name</th>
+                                            <th>Category</th>
+                                            <th>Current Value</th>
+                                            <th>Allocation %</th>
+                                            <th>Total P/L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="topHoldingsTable">
+                                        <tr><td colspan="6" class="loading">Loading data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+
+                        <!-- All Holdings -->
+                        <section class="section">
+                            <h3 class="section-title">All Holdings</h3>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Fund Name</th>
+                                            <th>Category</th>
+                                            <th>ISIN</th>
+                                            <th>Units</th>
+                                            <th>Cost Value</th>
+                                            <th>Current NAV</th>
+                                            <th>Current Value</th>
+                                            <th>Allocation %</th>
+                                            <th>Total P/L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="allHoldingsTable">
+                                        <tr><td colspan="9" class="loading">Loading data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    </main>
+                </div>
+            </div><!-- /#clientTabContent -->
+
+            <!-- MASTER DASHBOARD TAB CONTENT -->
+            <div id="masterTabContent" style="display:none;">
+                <div class="master-content">
+
+                    <!-- Fund Performance -->
+                    <section class="section">
+                        <h3 class="section-title">Fund Performance vs BSE 500</h3>
+                        <p class="section-subtitle">Point-to-point returns as of <span id="masterReportDate">—</span></p>
+                        <div class="table-responsive">
+                            <table class="data-table perf-table">
+                                <thead id="fundPerfHead"></thead>
+                                <tbody id="fundPerfBody">
+                                    <tr><td colspan="10" class="loading">Loading performance data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Category Performance -->
+                    <section class="section">
+                        <h3 class="section-title">Category Performance vs BSE 500</h3>
+                        <p class="section-subtitle">Equal-weight average of active funds per category</p>
+                        <div class="table-responsive">
+                            <table class="data-table perf-table">
+                                <thead id="catPerfHead"></thead>
+                                <tbody id="catPerfBody">
+                                    <tr><td colspan="10" class="loading">Loading performance data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Cash in Hand -->
+                    <section class="section">
+                        <h3 class="section-title">Cash in Hand (Uninvested)</h3>
+                        <div id="cashSummaryDiv">
+                            <p class="loading">Loading cash data...</p>
+                        </div>
+                    </section>
+
+                    <!-- Client × Fund Matrix -->
+                    <section class="section">
+                        <h3 class="section-title">Client &times; Fund Allocation (%)</h3>
+                        <p class="section-subtitle">% of each client's portfolio in each fund &mdash; darker = larger allocation</p>
+                        <div class="table-responsive">
+                            <table class="data-table matrix-table">
+                                <thead id="fundMatrixHead"></thead>
+                                <tbody id="fundMatrixBody">
+                                    <tr><td colspan="10" class="loading">Loading allocation data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Client × Category Matrix -->
+                    <section class="section">
+                        <h3 class="section-title">Client &times; Category Allocation (%)</h3>
+                        <p class="section-subtitle">% of each client's portfolio in each category</p>
+                        <div class="table-responsive">
+                            <table class="data-table matrix-table">
+                                <thead id="catMatrixHead"></thead>
+                                <tbody id="catMatrixBody">
+                                    <tr><td colspan="10" class="loading">Loading allocation data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                </div>
+            </div><!-- /#masterTabContent -->
+
+        </div><!-- /#mainSection -->
+
+        <!-- Loading Modal -->
         <div class="modal" id="loadingModal" style="display: none;">
             <div class="modal-content">
                 <div class="spinner"></div>
