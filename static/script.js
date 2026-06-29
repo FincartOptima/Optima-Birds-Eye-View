@@ -226,17 +226,24 @@ function renderClientData() {
 
     const totalPLEl = document.getElementById('totalPL');
     totalPLEl.textContent = formatCurrency(data.metrics.total_pl);
-    totalPLEl.className = 'kpi-value ' + (data.metrics.total_pl >= 0 ? 'positive' : 'negative');
+    totalPLEl.className = 'fs-kpi-value ' + glClass(data.metrics.total_pl);
+
+    const glPct = data.metrics.cost_value ? (data.metrics.total_pl / data.metrics.cost_value) * 100 : 0;
+    const glPctEl = document.getElementById('gainLossPct');
+    glPctEl.textContent = signedPct(glPct);
+    glPctEl.className = 'fs-kpi-sub ' + glClass(glPct);
 
     const xirr = document.getElementById('portfolioXIRR');
-    xirr.textContent = data.metrics.portfolio_xirr !== null ? formatPercentage(data.metrics.portfolio_xirr) : 'N/A';
-    if (data.metrics.portfolio_xirr !== null)
-        xirr.className = 'kpi-value ' + (data.metrics.portfolio_xirr >= 0 ? 'positive' : 'negative');
+    if (data.metrics.portfolio_xirr !== null) {
+        xirr.textContent = formatPercentage(data.metrics.portfolio_xirr);
+        xirr.className = 'fs-kpi-value ' + glClass(data.metrics.portfolio_xirr);
+    } else {
+        xirr.textContent = 'N/A';
+        xirr.className = 'fs-kpi-value';
+    }
 
     const bxirr = document.getElementById('benchmarkXIRR');
-    bxirr.textContent = data.metrics.benchmark_xirr !== null ? formatPercentage(data.metrics.benchmark_xirr) : 'N/A';
-    if (data.metrics.benchmark_xirr !== null)
-        bxirr.className = 'kpi-value ' + (data.metrics.benchmark_xirr >= 0 ? 'positive' : 'negative');
+    bxirr.textContent = 'BSE 500: ' + (data.metrics.benchmark_xirr !== null ? formatPercentage(data.metrics.benchmark_xirr) : 'N/A');
 
     renderCategoriesTable(data.categories);
     renderTopHoldingsTable(data.top_holdings);
@@ -505,11 +512,11 @@ function renderCashSummary() {
 function heatCell(val, max) {
     if (!val || val === 0) return '<td class="matrix-cell zero-cell">—</td>';
     const t   = Math.min(val / Math.max(max, 1), 1);
-    const r   = Math.round(235 + (31 - 235) * t);
-    const g   = Math.round(240 + (78 - 240) * t);
-    const b   = Math.round(247 + (120 - 247) * t);
+    const r   = Math.round(235 + (20 - 235) * t);
+    const g   = Math.round(240 + (54 - 240) * t);
+    const b   = Math.round(247 + (92 - 247) * t);
     const bg  = `rgb(${r},${g},${b})`;
-    const fg  = t > 0.55 ? '#ffffff' : '#1F4E78';
+    const fg  = t > 0.55 ? '#ffffff' : '#14365C';
     return `<td class="matrix-cell" style="background:${bg};color:${fg}">${val.toFixed(1)}%</td>`;
 }
 

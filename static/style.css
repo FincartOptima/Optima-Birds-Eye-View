@@ -9,9 +9,9 @@
 }
 
 :root {
-    --navy: #1F4E78;
-    --dark-navy: #152D44;
-    --light-blue: #EBF0F7;
+    --navy: #14365C;
+    --dark-navy: #0D2440;
+    --light-blue: #E8EEF6;
     --light-bg: #F0F0EC;
     --border-color: #C8D4E3;
     --text-dark: #2C3E50;
@@ -19,9 +19,10 @@
     --text-light: #8899AA;
     --success: #1B7A2F;
     --danger: #C0392B;
+    --gold: #C5922E;
     --white: #FFFFFF;
-    --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.15);
+    --shadow: 0 1px 3px rgba(16, 36, 64, 0.06);
+    --shadow-lg: 0 2px 10px rgba(16, 36, 64, 0.10);
 }
 
 html {
@@ -32,7 +33,7 @@ body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     line-height: 1.6;
     color: var(--text-dark);
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    background: #f4f6f9;
     min-height: 100vh;
 }
 
@@ -46,12 +47,12 @@ body {
    ============================================================ */
 
 .header {
-    background: linear-gradient(135deg, var(--navy) 0%, var(--dark-navy) 100%);
+    background: var(--navy);
+    border-bottom: 3px solid var(--gold);
     color: var(--white);
-    padding: 40px 20px;
+    padding: 26px 20px;
     text-align: center;
-    box-shadow: var(--shadow-lg);
-    margin-bottom: 30px;
+    margin-bottom: 28px;
 }
 
 .header-content h1 {
@@ -227,7 +228,7 @@ body {
 #clientSelect:focus {
     border-color: var(--navy);
     outline: none;
-    box-shadow: 0 0 0 3px rgba(31, 78, 120, 0.1);
+    box-shadow: 0 0 0 3px rgba(20, 54, 92, 0.12);
 }
 
 .search-input {
@@ -242,7 +243,7 @@ body {
 .search-input:focus {
     outline: none;
     border-color: var(--navy);
-    box-shadow: 0 0 0 3px rgba(31, 78, 120, 0.1);
+    box-shadow: 0 0 0 3px rgba(20, 54, 92, 0.12);
 }
 
 @media (max-width: 768px) {
@@ -418,8 +419,9 @@ body {
 
 .section {
     background: var(--white);
-    padding: 30px;
+    padding: 24px 26px;
     border-radius: 8px;
+    border: 1px solid var(--border-color);
     box-shadow: var(--shadow);
 }
 
@@ -460,7 +462,7 @@ body {
 }
 
 .data-table thead {
-    background: linear-gradient(135deg, var(--navy) 0%, var(--dark-navy) 100%);
+    background: var(--navy);
     color: var(--white);
 }
 
@@ -831,6 +833,71 @@ body {
 .detail-table th { padding: 8px 12px; }
 .detail-table td { padding: 7px 12px; }
 .detail-empty { padding: 16px; color: var(--text-med); font-style: italic; }
+
+/* ============================================================
+   Client View — Factsheet layout
+   ============================================================ */
+
+.factsheet { display: flex; flex-direction: column; gap: 22px; }
+
+.fs-header {
+    background: var(--navy);
+    border-bottom: 3px solid var(--gold, #C5922E);
+    color: #fff;
+    padding: 22px 26px;
+    border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 20px;
+}
+.fs-header-left h2 { font-size: 1.5rem; font-weight: 700; }
+.fs-ucc { font-size: 0.85rem; opacity: 0.8; margin-top: 2px; }
+.fs-header-right { text-align: right; display: flex; flex-direction: column; gap: 2px; }
+.fs-tag { font-size: 0.72rem; letter-spacing: 1px; opacity: 0.8; }
+.fs-date { font-size: 1.1rem; font-weight: 700; }
+.fs-incep { font-size: 0.75rem; opacity: 0.8; }
+
+.fs-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+}
+.fs-kpi {
+    background: #fff;
+    border: 1px solid var(--border-color);
+    border-top: 3px solid var(--navy);
+    border-radius: 6px;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.fs-kpi-label {
+    font-size: 0.72rem; color: var(--text-light);
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.fs-kpi-value { font-size: 1.3rem; font-weight: 700; color: var(--navy); }
+.fs-kpi-value.positive { color: var(--success); }
+.fs-kpi-value.negative { color: var(--danger); }
+.fs-kpi-sub { font-size: 0.78rem; color: var(--text-med); font-weight: 600; }
+.fs-kpi-sub.positive { color: var(--success); }
+.fs-kpi-sub.negative { color: var(--danger); }
+
+.fs-note {
+    font-size: 0.8rem; color: var(--text-med);
+    background: var(--light-blue);
+    border-left: 3px solid var(--navy);
+    padding: 10px 14px; border-radius: 4px;
+}
+.fs-note strong { color: var(--navy); }
+
+@media (max-width: 900px) { .fs-kpis { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 520px) {
+    .fs-kpis { grid-template-columns: 1fr; }
+    .fs-header { flex-direction: column; }
+    .fs-header-right { text-align: left; }
+}
 
 /* ============================================================
    Utility Classes

@@ -10,6 +10,7 @@ from openpyxl import load_workbook
 from create_client_factsheet_report import (
     read_master, read_transactions, read_bse_prices,
     read_current_navs, read_client_file_csv, build_client_reports, generate_client_pdf,
+    REPORT_DATE,
 )
 
 app = Flask(__name__)
@@ -137,7 +138,7 @@ def get_client_data(client_id):
         'name': report.client_name,
         'ucc': report.ucc,
         'inception_date': inception_date.strftime('%d %b %Y'),
-        'report_date': datetime(2026, 6, 10).strftime('%d %b %Y'),
+        'report_date': REPORT_DATE.strftime('%d %b %Y'),
 
         # Key metrics
         'metrics': {
@@ -233,7 +234,7 @@ def download_client_pdf(client_id):
 
         pdf_buffer.seek(0)
         safe_name = report.client_name.replace(' ', '_').replace('/', '_')
-        filename = f"{safe_name}_Factsheet_Jun_2026.pdf"
+        filename = f"{safe_name}_Factsheet_{REPORT_DATE.strftime('%b_%Y')}.pdf"
 
         return send_file(
             pdf_buffer,

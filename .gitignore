@@ -1,3 +1,6 @@
+# Test / scratch outputs
+_test_*
+
 # Uploaded and generated files
 uploads/
 generated_pdfs/

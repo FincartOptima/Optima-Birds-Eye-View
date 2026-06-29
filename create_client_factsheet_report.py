@@ -30,7 +30,7 @@ OPTIONAL_CURRENT_NAV_FILE = BASE_DIR / "Current_NAVs.xlsx"
 OUTPUT_FILE = BASE_DIR / "Client_Factsheet_Report.xlsx"
 PDF_OUTPUT_DIR = BASE_DIR / "Client_Factsheets"
 
-REPORT_DATE = datetime(2026, 6, 10)
+REPORT_DATE = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
 
 CATEGORY_BY_ISIN = {
     "INF109KC1RH9": "Indian Equity",
@@ -864,12 +864,14 @@ _LM = 28
 _RM = 28
 _CW = _PW - _LM - _RM
 
-_NAVY = HexColor("#1F4E78")
-_DARK_NAVY = HexColor("#152D44")
+_NAVY = HexColor("#14365C")
+_DARK_NAVY = HexColor("#0D2440")
+_GOLD = HexColor("#C5922E")
+_CREAM = HexColor("#F3E9CE")
 _WHITE = HexColor("#FFFFFF")
-_LIGHT_BG = HexColor("#F0F0EC")
-_LIGHT_BLUE = HexColor("#EBF0F7")
-_BORDER = HexColor("#C8D4E3")
+_LIGHT_BG = HexColor("#F4F6F9")
+_LIGHT_BLUE = HexColor("#E8EEF6")
+_BORDER = HexColor("#C2D0E0")
 _TEXT_DARK = HexColor("#2C3E50")
 _TEXT_MED = HexColor("#5A6C7E")
 _TEXT_LIGHT = HexColor("#8899AA")
@@ -914,12 +916,12 @@ def _inception(report: ClientReport) -> datetime:
 
 def _fmt_inr(val: float | None) -> str:
     if val is None or val == 0:
-        return "₹ 0"
+        return "Rs 0"
     if abs(val) >= 1e7:
-        return f"₹ {val / 1e7:.2f} Cr"
+        return f"Rs {val / 1e7:.2f} Cr"
     if abs(val) >= 1e5:
-        return f"₹ {val / 1e5:.2f} L"
-    return f"₹ {val:,.0f}"
+        return f"Rs {val / 1e5:.2f} L"
+    return f"Rs {val:,.0f}"
 
 
 def _aggregate_pdf_categories(report: ClientReport) -> list[tuple[str, float]]:
@@ -998,6 +1000,9 @@ def _draw_pdf_header(c: PdfCanvas, y: float, report: ClientReport) -> float:
     h = 55
     c.setFillColor(_NAVY)
     c.rect(_LM, y - h, _CW, h, fill=True, stroke=False)
+    # gold accent line under the header band
+    c.setFillColor(_GOLD)
+    c.rect(_LM, y - h - 3, _CW, 3, fill=True, stroke=False)
 
     c.setFillColor(_WHITE)
     c.setFont("Helvetica-Bold", 15)
@@ -1037,9 +1042,9 @@ def _draw_pdf_about(c: PdfCanvas, y: float, report: ClientReport) -> float:
     c.setFillColor(_TEXT_DARK)
     c.setFont("Helvetica", 6.8)
     approach = (
-        "INVESTMENT APPROACH:  Strategic multi-asset allocation across Indian equity, international equity, debt, gold and arbitrage  ▸  "
-        "Direct-plan-only universe — preserves every bps of return  ▸  Diversified across market caps and themes: small-cap alpha, thematic equity, "
-        "defence and focused large-cap  ▸  Quarterly rebalancing anchored to a defined benchmark for measurable accountability."
+        "INVESTMENT APPROACH:  Strategic multi-asset allocation across Indian equity, international equity, debt, gold and arbitrage  •  "
+        "Direct-plan-only universe — preserves every bps of return  •  Diversified across market caps and themes: small-cap alpha, thematic equity, "
+        "defence and focused large-cap  •  Quarterly rebalancing anchored to a defined benchmark for measurable accountability."
     )
     text_obj = c.beginText(_LM + 12, y - 42)
     text_obj.setFont("Helvetica", 6.5)
@@ -1063,31 +1068,43 @@ def _draw_pdf_kpi(c: PdfCanvas, y: float, report: ClientReport) -> float:
     h = 58
     box_w = _CW / 3
     inception_dt = _inception(report)
+    gl_frac = (report.total_pl / report.cost_value) if report.cost_value else 0.0
 
-    for i in range(3):
+    # (background, label/sub color, default value color)
+    box_styles = [
+        (_NAVY, _WHITE, _WHITE),
+        (_DARK_NAVY, _WHITE, _WHITE),
+        (_CREAM, _TEXT_MED, _TEXT_DARK),
+    ]
+    for i, (bg, _lbl, _val) in enumerate(box_styles):
         bx = _LM + i * box_w
-        c.setStrokeColor(_BORDER)
-        c.setLineWidth(0.8)
-        c.rect(bx, y - h, box_w, h, fill=False, stroke=True)
+        c.setFillColor(bg)
+        c.rect(bx, y - h, box_w, h, fill=True, stroke=False)
 
-    def _draw_kpi_box(idx: int, label: str, value: str, sub: str, val_color=_TEXT_DARK):
+    def _draw_kpi_box(idx: int, label: str, value: str, sub: str, val_color=None):
+        bg, lbl_color, default_val = box_styles[idx]
+        if val_color is None:
+            val_color = default_val
         bx = _LM + idx * box_w
         cx = bx + box_w / 2
-        c.setFillColor(_TEXT_LIGHT)
+        c.setFillColor(lbl_color)
         c.setFont("Helvetica", 6.5)
         c.drawCentredString(cx, y - 14, label)
         c.setFillColor(val_color)
-        c.setFont("Helvetica-Bold", 16)
-        c.drawCentredString(cx, y - 33, value)
-        c.setFillColor(_TEXT_MED)
+        c.setFont("Helvetica-Bold", 15)
+        c.drawCentredString(cx, y - 32, value)
+        c.setFillColor(lbl_color)
         c.setFont("Helvetica", 6)
         c.drawCentredString(cx, y - 46, sub)
 
-    _draw_kpi_box(0, "INCEPTION", inception_dt.strftime("%d %b %Y"), "")
+    _draw_kpi_box(0, "INCEPTION", inception_dt.strftime("%d %b %Y"), "Portfolio start")
+    _draw_kpi_box(1, "ABSOLUTE GAIN / LOSS", _fmt_pct(gl_frac), _fmt_inr(report.total_pl))
+    xirr_val = _fmt_pct(report.xirr) if report.xirr is not None else "N/A"
     bm_val = _fmt_pct(report.benchmark_xirr) if report.benchmark_xirr is not None else "N/A"
-    _draw_kpi_box(1, "BENCHMARK", bm_val, "BSE 500 (BSE_DLY_BSE500, 1D)", _pct_color(report.benchmark_xirr))
-    port_val = _fmt_pct(report.xirr) if report.xirr is not None else "N/A"
-    _draw_kpi_box(2, "PORTFOLIO SINCE INCEPTION", port_val, "Client XIRR", _pct_color(report.xirr))
+    _draw_kpi_box(
+        2, "XIRR  •  SINCE INCEPTION", xirr_val, f"vs BSE 500  {bm_val}",
+        _pct_color(report.xirr) if report.xirr is not None else _TEXT_MED,
+    )
 
     return y - h
 
@@ -1096,12 +1113,15 @@ def _draw_pdf_section_header(c: PdfCanvas, y: float, title: str, subtitle: str =
     h = 20
     c.setFillColor(_NAVY)
     c.rect(_LM, y - h, _CW, h, fill=True, stroke=False)
+    # gold left edge accent
+    c.setFillColor(_GOLD)
+    c.rect(_LM, y - h, 4, h, fill=True, stroke=False)
     c.setFillColor(_WHITE)
     c.setFont("Helvetica-Bold", 9)
-    c.drawString(_LM + 10, y - 14, title)
+    c.drawString(_LM + 12, y - 14, title)
     if subtitle:
         c.setFont("Helvetica-Oblique", 7)
-        c.drawString(_LM + 10 + c.stringWidth(title, "Helvetica-Bold", 9) + 12, y - 14, subtitle)
+        c.drawString(_LM + 12 + c.stringWidth(title, "Helvetica-Bold", 9) + 12, y - 14, subtitle)
     return y - h
 
 
@@ -1117,7 +1137,7 @@ def _draw_pdf_strategy_tables(c: PdfCanvas, y: float, report: ClientReport) -> f
         ("Benchmark", "BSE 500 (BSE_DLY_BSE500, 1D)"),
         ("Investment Universe", "Direct Plan Mutual Funds"),
         ("Custodian / Fund A/c", "Nuvama Wealth"),
-        ("Min. Investment", "₹ 50 Lakh"),
+        ("Min. Investment", "Rs 50 Lakh"),
     ]
 
     c.setFont("Helvetica-Bold", 8.5)

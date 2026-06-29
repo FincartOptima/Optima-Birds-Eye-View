@@ -90,60 +90,52 @@
 
             <!-- CLIENT TAB CONTENT -->
             <div id="clientTabContent">
-                <div class="content-wrapper">
-                    <!-- Sidebar with client stats -->
-                    <aside class="sidebar">
-                        <div class="client-card" id="clientCard">
+                <div class="factsheet">
+
+                    <!-- Factsheet header band -->
+                    <div class="fs-header">
+                        <div class="fs-header-left">
                             <h2 id="clientName">---</h2>
-                            <p class="ucc" id="clientUCC">UCC: ---</p>
-                            <hr>
-                            <div class="stat-group">
-                                <div class="stat">
-                                    <span class="stat-label">Inception Date</span>
-                                    <span class="stat-value" id="inceptionDate">---</span>
-                                </div>
-                                <div class="stat">
-                                    <span class="stat-label">Report Date</span>
-                                    <span class="stat-value" id="reportDate">---</span>
-                                </div>
-                            </div>
+                            <p class="fs-ucc" id="clientUCC">UCC: ---</p>
                         </div>
-
-                        <!-- KPI Cards -->
-                        <div class="kpi-section">
-                            <div class="kpi-card">
-                                <span class="kpi-label">Cost Value</span>
-                                <span class="kpi-value" id="costValue">₹0</span>
-                            </div>
-                            <div class="kpi-card">
-                                <span class="kpi-label">Current Value</span>
-                                <span class="kpi-value" id="currentValue">₹0</span>
-                            </div>
-                            <div class="kpi-card">
-                                <span class="kpi-label">Total P/L</span>
-                                <span class="kpi-value" id="totalPL">₹0</span>
-                            </div>
-                            <div class="kpi-card">
-                                <span class="kpi-label">Portfolio XIRR</span>
-                                <span class="kpi-value" id="portfolioXIRR">N/A</span>
-                            </div>
-                            <div class="kpi-card">
-                                <span class="kpi-label">Benchmark XIRR</span>
-                                <span class="kpi-value" id="benchmarkXIRR">N/A</span>
-                            </div>
+                        <div class="fs-header-right">
+                            <span class="fs-tag">FACTSHEET</span>
+                            <span class="fs-date" id="reportDate">---</span>
+                            <span class="fs-incep">Inception <span id="inceptionDate">---</span></span>
                         </div>
-                    </aside>
+                    </div>
 
-                    <!-- Main Content -->
-                    <main class="main-content">
-                        <!-- About Section -->
-                        <section class="section">
-                            <h3 class="section-title">About the Strategy</h3>
-                            <div class="about-text">
-                                <p><strong>Multi-Asset Strategic Allocation</strong> &bull; Direct Plan Mutual Fund PMS</p>
-                                <p><strong>Investment Approach:</strong> Strategic multi-asset allocation across Indian equity, international equity, debt, gold and arbitrage with quarterly rebalancing anchored to a defined benchmark for measurable accountability.</p>
-                            </div>
-                        </section>
+                    <!-- KPI strip -->
+                    <div class="fs-kpis">
+                        <div class="fs-kpi">
+                            <span class="fs-kpi-label">Invested</span>
+                            <span class="fs-kpi-value" id="costValue">₹0</span>
+                        </div>
+                        <div class="fs-kpi">
+                            <span class="fs-kpi-label">Current Value</span>
+                            <span class="fs-kpi-value" id="currentValue">₹0</span>
+                        </div>
+                        <div class="fs-kpi">
+                            <span class="fs-kpi-label">Gain / Loss</span>
+                            <span class="fs-kpi-value" id="totalPL">₹0</span>
+                            <span class="fs-kpi-sub" id="gainLossPct">—</span>
+                        </div>
+                        <div class="fs-kpi">
+                            <span class="fs-kpi-label">XIRR (since inception)</span>
+                            <span class="fs-kpi-value" id="portfolioXIRR">N/A</span>
+                            <span class="fs-kpi-sub" id="benchmarkXIRR">BSE 500: N/A</span>
+                        </div>
+                    </div>
+                    <p class="fs-note">Performance shown two ways &mdash; <strong>absolute Gain/Loss</strong> (cost vs current value) and <strong>XIRR</strong> (annualised since inception, where transaction history is available), benchmarked to BSE 500.</p>
+
+                    <!-- About Section -->
+                    <section class="section">
+                        <h3 class="section-title">About the Strategy</h3>
+                        <div class="about-text">
+                            <p><strong>Multi-Asset Strategic Allocation</strong> &bull; Direct Plan Mutual Fund PMS</p>
+                            <p><strong>Investment Approach:</strong> Strategic multi-asset allocation across Indian equity, international equity, debt, gold and arbitrage with quarterly rebalancing anchored to a defined benchmark for measurable accountability.</p>
+                        </div>
+                    </section>
 
                         <!-- Categories Table -->
                         <section class="section">
@@ -213,8 +205,7 @@
                                 </table>
                             </div>
                         </section>
-                    </main>
-                </div>
+                </div><!-- /.factsheet -->
             </div><!-- /#clientTabContent -->
 
             <!-- MASTER DASHBOARD TAB CONTENT -->
