@@ -9,7 +9,7 @@ from datetime import datetime
 from openpyxl import load_workbook
 from create_client_factsheet_report import (
     read_master, read_transactions, read_bse_prices,
-    read_current_navs, build_client_reports, generate_client_pdf,
+    read_current_navs, read_client_file_csv, build_client_reports, generate_client_pdf,
 )
 
 app = Flask(__name__)
@@ -32,67 +32,77 @@ def index():
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload and generate reports"""
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
+    """Handle upload of the client holdings CSV and/or the trade master xlsx.
 
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+    The CSV alone is enough for the Client Consolidated tab. The xlsx (trade
+    master) additionally enables the per-client factsheet (XIRR) and the
+    Master Dashboard. At least one file must be provided.
+    """
+    xlsx = request.files.get('file')
+    snap = request.files.get('nav_file')
+    has_xlsx = bool(xlsx and xlsx.filename)
+    has_snap = bool(snap and snap.filename)
 
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        return jsonify({'error': 'Only Excel files (.xlsx, .xls) are supported'}), 400
+    if not has_xlsx and not has_snap:
+        return jsonify({'error': 'No file provided. Upload the client holdings CSV (and optionally the trade master).'}), 400
+    if has_xlsx and not xlsx.filename.lower().endswith(('.xlsx', '.xls')):
+        return jsonify({'error': 'The trade master must be an Excel file (.xlsx, .xls)'}), 400
+    if has_snap and not snap.filename.lower().endswith('.csv'):
+        return jsonify({'error': 'The client holdings snapshot must be a .csv file'}), 400
 
     try:
-        # Save uploaded file
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
+        # Reset prior state
+        reports_cache.pop('csv_path', None)
+        reports_cache['reports'] = []
+        reports_cache['bse_prices'] = []
 
-        # Process the file
-        print(f"Processing file: {filepath}")
-        source_workbook = load_workbook(filepath, data_only=True)
-        master = read_master(source_workbook)
+        # Save and parse the holdings snapshot (current NAVs + consolidated view)
+        current_navs, category_overrides = {}, {}
+        if has_snap:
+            snap_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(snap.filename))
+            snap.save(snap_path)
+            reports_cache['csv_path'] = snap_path
+            current_navs, category_overrides = read_client_file_csv(Path(snap_path))
+            print(f"Snapshot NAVs: {len(current_navs)}")
 
-        if not master:
-            return jsonify({'error': 'No valid client data found in the file'}), 400
+        client_list = []
+        if has_xlsx:
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(xlsx.filename))
+            xlsx.save(filepath)
+            print(f"Processing trade master: {filepath}")
+            source_workbook = load_workbook(filepath, data_only=True)
+            master = read_master(source_workbook)
+            if not master:
+                return jsonify({'error': 'No valid client data found in the trade master file'}), 400
+            transactions = read_transactions(source_workbook, master)
 
-        transactions = read_transactions(source_workbook, master)
+            bse_file = Path(__file__).resolve().parent / "BSE_DLY_BSE500, 1D (8).csv"
+            if not bse_file.exists():
+                return jsonify({'error': f'BSE 500 data file not found: {bse_file}'}), 400
+            bse_prices = read_bse_prices(bse_file)
 
-        # Read BSE prices
-        bse_file = Path(__file__).resolve().parent / "BSE_DLY_BSE500, 1D (8).csv"
-        if not bse_file.exists():
-            return jsonify({'error': f'BSE 500 data file not found: {bse_file}'}), 400
+            # Fall back to bundled Current_NAVs.xlsx only if no snapshot NAVs
+            if not current_navs:
+                current_navs, category_overrides = read_current_navs(Path(__file__).resolve().parent / "Current_NAVs.xlsx")
 
-        bse_prices = read_bse_prices(bse_file)
-        current_navs, category_overrides = read_current_navs(Path(__file__).resolve().parent / "Current_NAVs.xlsx")
+            reports = build_client_reports(master, transactions, bse_prices, current_navs, category_overrides)
+            reports_cache['reports'] = reports
+            reports_cache['bse_prices'] = bse_prices
+            reports_cache['file_path'] = filepath
 
-        # Build reports
-        reports = build_client_reports(master, transactions, bse_prices, current_navs, category_overrides)
+            client_list = [
+                {'id': i, 'name': r.client_name, 'ucc': r.ucc,
+                 'cost_value': r.cost_value, 'current_value': r.current_value}
+                for i, r in enumerate(reports) if r.cost_value > 0
+            ]
 
-        # Cache reports and bse_prices for master tab
-        reports_cache['reports'] = reports
-        reports_cache['bse_prices'] = bse_prices
-        reports_cache['file_path'] = filepath
         reports_cache['upload_time'] = datetime.now().isoformat()
-
-        # Prepare client list
-        client_list = [
-            {
-                'id': i,
-                'name': report.client_name,
-                'ucc': report.ucc,
-                'cost_value': report.cost_value,
-                'current_value': report.current_value,
-            }
-            for i, report in enumerate(reports)
-            if report.cost_value > 0  # Only show clients with investments
-        ]
-
         return jsonify({
             'success': True,
             'clients': client_list,
             'total_clients': len(client_list),
+            'has_master': has_xlsx,
+            'has_snapshot': has_snap,
             'message': f'Loaded {len(client_list)} clients successfully'
         })
 
@@ -253,6 +263,21 @@ def get_master():
             REPORT_DATE,
         )
         return jsonify(data)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/consolidated')
+def get_consolidated():
+    """Return the CSV-driven consolidated client view (gain/loss + cash)."""
+    csv_path = reports_cache.get('csv_path')
+    if not csv_path or not os.path.exists(csv_path):
+        return jsonify({'error': 'No client holdings snapshot (CSV) was uploaded. Upload the client file to see the consolidated view.'}), 400
+    try:
+        from compute_consolidated import compute_consolidated
+        return jsonify(compute_consolidated(Path(csv_path)))
     except Exception as e:
         import traceback
         traceback.print_exc()

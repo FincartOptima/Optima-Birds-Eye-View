@@ -24,12 +24,31 @@
                     <polyline points="17 8 12 3 7 8"></polyline>
                     <line x1="12" y1="3" x2="12" y2="15"></line>
                 </svg>
-                <h3>Upload Trade Allocation Master File</h3>
-                <p>Select your Excel file (.xlsx) to get started</p>
-                <input type="file" id="fileInput" accept=".xlsx,.xls" style="display: none;">
-                <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">
-                    Choose File
-                </button>
+                <h3>Upload Portfolio Files</h3>
+                <p>Provide the client holdings snapshot and (optionally) the trade allocation master.</p>
+
+                <div class="upload-rows">
+                    <div class="upload-row">
+                        <div class="upload-row-label">
+                            <strong>Client Holdings File</strong> <span class="req">required</span>
+                            <small>Custodian snapshot (.csv) — drives gain/loss &amp; consolidated views</small>
+                        </div>
+                        <input type="file" id="csvInput" accept=".csv" style="display:none;">
+                        <button class="btn btn-secondary" onclick="document.getElementById('csvInput').click()">Choose CSV</button>
+                        <span class="picked" id="csvPicked">No file</span>
+                    </div>
+                    <div class="upload-row">
+                        <div class="upload-row-label">
+                            <strong>Trade Allocation Master</strong> <span class="opt">optional</span>
+                            <small>Excel (.xlsx) — enables XIRR &amp; the performance dashboard</small>
+                        </div>
+                        <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;">
+                        <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">Choose Excel</button>
+                        <span class="picked" id="xlsxPicked">No file</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" id="loadBtn" onclick="processUpload()">Load Dashboard</button>
                 <p class="file-info" id="fileInfo"></p>
             </div>
         </div>
@@ -66,6 +85,7 @@
             <div class="tab-bar">
                 <button class="tab-btn active" id="tabClientBtn" onclick="switchTab('client')">Client View</button>
                 <button class="tab-btn" id="tabMasterBtn" onclick="switchTab('master')">Master Dashboard</button>
+                <button class="tab-btn" id="tabConsolidatedBtn" onclick="switchTab('consolidated')">Client Consolidated</button>
             </div>
 
             <!-- CLIENT TAB CONTENT -->
@@ -267,6 +287,47 @@
 
                 </div>
             </div><!-- /#masterTabContent -->
+
+            <!-- CLIENT CONSOLIDATED TAB CONTENT -->
+            <div id="consolidatedTabContent" style="display:none;">
+                <div class="master-content">
+
+                    <!-- Consolidated KPIs -->
+                    <section class="section">
+                        <h3 class="section-title">Consolidated Portfolio &mdash; All Clients</h3>
+                        <p class="section-subtitle">Holdings snapshot as of <span id="consReportDate">&mdash;</span> &bull; performance shown as absolute Gain/Loss (cost vs market value)</p>
+                        <div class="kpi-grid" id="consKpis">
+                            <p class="loading">Loading consolidated data...</p>
+                        </div>
+                    </section>
+
+                    <!-- Per-client table with drill-down -->
+                    <section class="section">
+                        <h3 class="section-title">Client Gain / Loss</h3>
+                        <p class="section-subtitle">Click a client row to expand its fund-level detail</p>
+                        <div class="table-responsive">
+                            <table class="data-table cons-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:28px"></th>
+                                        <th>Client</th>
+                                        <th class="num">Invested</th>
+                                        <th class="num">Current Value</th>
+                                        <th class="num">Gain / Loss</th>
+                                        <th class="num">Gain / Loss %</th>
+                                        <th class="num">Cash in Hand</th>
+                                        <th class="num">Cash %</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="consBody">
+                                    <tr><td colspan="8" class="loading">Loading...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                </div>
+            </div><!-- /#consolidatedTabContent -->
 
         </div><!-- /#mainSection -->
 

@@ -8,6 +8,9 @@ let currentClientData = null;
 let activeTab = 'client';
 let masterDataLoaded = false;
 let masterData = null;
+let consolidatedLoaded = false;
+let consolidatedData = null;
+let hasMasterFile = false;
 
 // ============================================================
 // Utility Functions
@@ -52,38 +55,46 @@ function closeErrorModal() {
 // File Upload
 // ============================================================
 
-document.getElementById('fileInput').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+document.getElementById('csvInput').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    document.getElementById('csvPicked').textContent = f ? f.name : 'No file';
+});
+document.getElementById('fileInput').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    document.getElementById('xlsxPicked').textContent = f ? f.name : 'No file';
+});
 
-    showLoading('Uploading and processing file...');
+async function processUpload() {
+    const csvFile = document.getElementById('csvInput').files[0];
+    const xlsxFile = document.getElementById('fileInput').files[0];
+
+    if (!csvFile && !xlsxFile) {
+        showError('Please choose at least the Client Holdings CSV file.');
+        return;
+    }
+
+    showLoading('Uploading and processing files...');
 
     const formData = new FormData();
-    formData.append('file', file);
+    if (xlsxFile) formData.append('file', xlsxFile);
+    if (csvFile)  formData.append('nav_file', csvFile);
 
     try {
-        const response = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-        });
-
+        const response = await fetch('/api/upload', { method: 'POST', body: formData });
         const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Upload failed');
 
-        if (!response.ok) {
-            throw new Error(data.error || 'Upload failed');
-        }
-
-        clientsList = data.clients;
-        document.getElementById('fileInfo').textContent = `✓ Loaded ${data.total_clients} clients`;
+        clientsList = data.clients || [];
+        hasMasterFile = !!xlsxFile && clientsList.length > 0;
+        document.getElementById('fileInfo').textContent = `✓ Loaded ${data.total_clients || 0} clients`;
 
         initializeUI();
         hideLoading();
-
     } catch (error) {
         hideLoading();
         showError(error.message);
     }
-});
+}
 
 // ============================================================
 // UI Initialization
@@ -110,8 +121,16 @@ function initializeUI() {
 
     setupClientSearch();
 
-    // Start on master tab (per spec — Master Dashboard is the landing view after upload)
-    switchTab('master');
+    // Enable/disable tabs that require the trade master
+    const clientBtn = document.getElementById('tabClientBtn');
+    const masterBtn = document.getElementById('tabMasterBtn');
+    clientBtn.disabled = !hasMasterFile;
+    masterBtn.disabled = !hasMasterFile;
+    clientBtn.classList.toggle('disabled', !hasMasterFile);
+    masterBtn.classList.toggle('disabled', !hasMasterFile);
+
+    // Land on Client Consolidated (always available from the CSV)
+    switchTab('consolidated');
 }
 
 function setupClientSearch() {
@@ -134,35 +153,33 @@ function setupClientSearch() {
 // ============================================================
 
 function switchTab(tab) {
+    if ((tab === 'client' || tab === 'master') && !hasMasterFile) {
+        showError('This view needs the Trade Allocation Master file. Re-upload including the Excel file to enable it.');
+        return;
+    }
     activeTab = tab;
 
-    const clientBtn  = document.getElementById('tabClientBtn');
-    const masterBtn  = document.getElementById('tabMasterBtn');
-    const clientContent = document.getElementById('clientTabContent');
-    const masterContent = document.getElementById('masterTabContent');
-    const downloadBtn   = document.getElementById('downloadBtn');
-    const toolbarCenter = document.getElementById('toolbarCenter');
-    const toolbarRight  = document.getElementById('toolbarRight');
+    const tabs = {
+        client:       { btn: 'tabClientBtn',       content: 'clientTabContent' },
+        master:       { btn: 'tabMasterBtn',       content: 'masterTabContent' },
+        consolidated: { btn: 'tabConsolidatedBtn', content: 'consolidatedTabContent' },
+    };
 
-    if (tab === 'client') {
-        clientBtn.classList.add('active');
-        masterBtn.classList.remove('active');
-        clientContent.style.display = 'block';
-        masterContent.style.display = 'none';
-        toolbarCenter.style.display = 'flex';
-        toolbarRight.style.display  = 'flex';
-    } else {
-        masterBtn.classList.add('active');
-        clientBtn.classList.remove('active');
-        clientContent.style.display = 'none';
-        masterContent.style.display = 'block';
-        toolbarCenter.style.display = 'none';
-        toolbarRight.style.display  = 'none';
-
-        if (!masterDataLoaded) {
-            loadMasterData();
-        }
+    for (const [key, ids] of Object.entries(tabs)) {
+        const btn = document.getElementById(ids.btn);
+        const content = document.getElementById(ids.content);
+        const isActive = key === tab;
+        btn.classList.toggle('active', isActive);
+        content.style.display = isActive ? 'block' : 'none';
     }
+
+    // The client/search toolbar only applies to the per-client factsheet
+    const showToolbar = tab === 'client';
+    document.getElementById('toolbarCenter').style.display = showToolbar ? 'flex' : 'none';
+    document.getElementById('toolbarRight').style.display  = showToolbar ? 'flex' : 'none';
+
+    if (tab === 'master' && !masterDataLoaded) loadMasterData();
+    if (tab === 'consolidated' && !consolidatedLoaded) loadConsolidated();
 }
 
 // ============================================================
@@ -327,11 +344,17 @@ function resetApp() {
     currentClientData = null;
     masterDataLoaded = false;
     masterData = null;
+    consolidatedLoaded = false;
+    consolidatedData = null;
+    hasMasterFile = false;
 
     document.getElementById('uploadSection').style.display = 'block';
     document.getElementById('mainSection').style.display = 'none';
     document.getElementById('fileInfo').textContent = '';
     document.getElementById('fileInput').value = '';
+    document.getElementById('csvInput').value = '';
+    document.getElementById('csvPicked').textContent = 'No file';
+    document.getElementById('xlsxPicked').textContent = 'No file';
     document.getElementById('clientSearch').value = '';
 }
 
@@ -530,6 +553,120 @@ function renderCatMatrix() {
             ${(data[cat] || []).map(v => heatCell(v, max)).join('')}
         </tr>
     `).join('');
+}
+
+// ============================================================
+// Client Consolidated — Load & Render
+// ============================================================
+
+async function loadConsolidated() {
+    showLoading('Loading consolidated view...');
+    try {
+        const response = await fetch('/api/consolidated');
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to load consolidated data');
+        }
+        consolidatedData = await response.json();
+        consolidatedLoaded = true;
+        renderConsolidated();
+        hideLoading();
+    } catch (error) {
+        hideLoading();
+        showError(error.message);
+    }
+}
+
+function glClass(v) { return v >= 0 ? 'positive' : 'negative'; }
+function signedPct(v) { return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`; }
+
+function renderConsolidated() {
+    if (!consolidatedData) return;
+    const { clients, totals, report_date } = consolidatedData;
+
+    document.getElementById('consReportDate').textContent = report_date || '—';
+
+    // KPI cards
+    document.getElementById('consKpis').innerHTML = `
+        <div class="kpi-tile">
+            <span class="kpi-tile-label">Clients</span>
+            <span class="kpi-tile-value">${totals.n_clients}</span>
+        </div>
+        <div class="kpi-tile">
+            <span class="kpi-tile-label">Total Invested</span>
+            <span class="kpi-tile-value">${formatCurrency(totals.cost)}</span>
+        </div>
+        <div class="kpi-tile">
+            <span class="kpi-tile-label">Current Value</span>
+            <span class="kpi-tile-value">${formatCurrency(totals.market_value)}</span>
+        </div>
+        <div class="kpi-tile">
+            <span class="kpi-tile-label">Total Gain / Loss</span>
+            <span class="kpi-tile-value ${glClass(totals.gain_loss)}">${formatCurrency(totals.gain_loss)}</span>
+            <span class="kpi-tile-sub ${glClass(totals.gain_loss_pct)}">${signedPct(totals.gain_loss_pct)}</span>
+        </div>
+        <div class="kpi-tile">
+            <span class="kpi-tile-label">Total Cash in Hand</span>
+            <span class="kpi-tile-value">${formatCurrency(totals.cash)}</span>
+            <span class="kpi-tile-sub">${totals.cash_pct.toFixed(2)}% of AUM</span>
+        </div>`;
+
+    // Per-client rows + hidden detail rows
+    let html = '';
+    clients.forEach((c, idx) => {
+        html += `
+            <tr class="cons-client-row" onclick="toggleClientDetail(${idx})">
+                <td class="exp-cell"><span class="exp-caret" id="caret-${idx}">▸</span></td>
+                <td><strong>${c.name}</strong><br><span class="muted">${c.ucc}</span></td>
+                <td class="num">${formatCurrency(c.cost)}</td>
+                <td class="num">${formatCurrency(c.market_value)}</td>
+                <td class="num ${glClass(c.gain_loss)}">${formatCurrency(c.gain_loss)}</td>
+                <td class="num ${glClass(c.gain_loss_pct)}">${signedPct(c.gain_loss_pct)}</td>
+                <td class="num">${formatCurrency(c.cash)}</td>
+                <td class="num">${c.cash_pct.toFixed(2)}%</td>
+            </tr>
+            <tr class="cons-detail-row" id="detail-${idx}" style="display:none">
+                <td></td>
+                <td colspan="7">${renderClientDetail(c)}</td>
+            </tr>`;
+    });
+    document.getElementById('consBody').innerHTML = html ||
+        '<tr><td colspan="8" class="loading">No client data</td></tr>';
+}
+
+function renderClientDetail(c) {
+    if (!c.holdings || c.holdings.length === 0) {
+        return `<div class="detail-empty">No fund holdings — entire portfolio (${formatCurrency(c.cash)}) is in cash.</div>`;
+    }
+    const rows = c.holdings.map(h => `
+        <tr>
+            <td>${h.scheme}</td>
+            <td>${h.category}</td>
+            <td class="num">${h.pct_assets.toFixed(2)}%</td>
+            <td class="num">${formatCurrency(h.cost)}</td>
+            <td class="num">${formatCurrency(h.market_value)}</td>
+            <td class="num ${glClass(h.gain_loss)}">${formatCurrency(h.gain_loss)}</td>
+            <td class="num ${glClass(h.gain_loss_pct)}">${signedPct(h.gain_loss_pct)}</td>
+        </tr>`).join('');
+    return `
+        <table class="data-table detail-table">
+            <thead>
+                <tr>
+                    <th>Fund</th><th>Category</th><th class="num">% Assets</th>
+                    <th class="num">Invested</th><th class="num">Current Value</th>
+                    <th class="num">Gain / Loss</th><th class="num">Gain / Loss %</th>
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>`;
+}
+
+function toggleClientDetail(idx) {
+    const row = document.getElementById(`detail-${idx}`);
+    const caret = document.getElementById(`caret-${idx}`);
+    const open = row.style.display !== 'none';
+    row.style.display = open ? 'none' : 'table-row';
+    caret.textContent = open ? '▸' : '▾';
 }
 
 // ============================================================

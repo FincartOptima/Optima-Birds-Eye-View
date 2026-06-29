@@ -11,10 +11,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
 from openpyxl import Workbook, load_workbook
 from openpyxl.chart import LineChart, Reference
 from openpyxl.chart.label import DataLabelList
@@ -348,6 +344,28 @@ def read_current_navs(file_path: Path) -> tuple[dict[str, float], dict[str, str]
                 if category:
                     categories[isin] = category
     return navs, categories
+
+
+def read_client_file_csv(file_path: Path) -> tuple[dict[str, float], dict[str, str]]:
+    """Read a custodian holdings-snapshot CSV (e.g. 'client file.csv').
+
+    The snapshot has one row per (client, holding) with the live NAV in the
+    'Unit Price' column. We extract a {ISIN: current_nav} map so the snapshot
+    can act as the source of current valuations (replacing Current_NAVs.xlsx).
+    Categories are left to CATEGORY_BY_ISIN / infer_category, so we return an
+    empty category-override dict.
+    """
+    navs: dict[str, float] = {}
+    if not file_path.exists():
+        return navs, {}
+    with open(file_path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            isin = clean_text(row.get("ISIN"))
+            nav = to_number(row.get("Unit Price"))
+            if isin and nav is not None and nav > 0:
+                navs[isin] = nav
+    return navs, {}
 
 
 def latest_observed_navs(transactions: list[Transaction]) -> dict[str, tuple[float, datetime]]:
@@ -918,7 +936,16 @@ def _scheme_count(report: ClientReport) -> int:
     return len([h for h in report.holdings if h.current_value > 0])
 
 
+def _matplotlib_pyplot():
+    """Import matplotlib lazily (only the PDF chart helpers need it)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    return plt
+
+
 def _make_pie_image(labels: list[str], sizes: list[float]) -> ImageReader:
+    plt = _matplotlib_pyplot()
     fig, ax = plt.subplots(figsize=(2.6, 2.6))
     colors = _PIE_COLORS[: len(labels)]
     while len(colors) < len(labels):
@@ -945,6 +972,7 @@ def _make_pie_image(labels: list[str], sizes: list[float]) -> ImageReader:
 
 
 def _make_bar_image(labels: list[str], values: list[float]) -> ImageReader:
+    plt = _matplotlib_pyplot()
     fig, ax = plt.subplots(figsize=(5.2, 2.0))
     rev_labels = labels[::-1]
     rev_values = values[::-1]

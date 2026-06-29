@@ -3,10 +3,12 @@ uploads/
 generated_pdfs/
 Client_Factsheets/
 
-# Sensitive data files
+# Sensitive data files (client-identifying)
 Trade Allocation_Master.xlsx
 Current_NAVs.xlsx
 Client_Factsheet_Report.xlsx
+client file.csv
+client file*.csv
 
 # Python
 __pycache__/
@@ -20,6 +22,9 @@ build/
 .env
 venv/
 env/
+
+# Local tooling
+.claude/
 
 # OS
 .DS_Store
