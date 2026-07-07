@@ -159,25 +159,19 @@
                             </div>
                         </section>
 
-                        <!-- Top 5 Holdings -->
+                        <!-- Category Allocation Pie Charts -->
                         <section class="section">
-                            <h3 class="section-title">Top 5 Holdings</h3>
-                            <div class="table-responsive">
-                                <table class="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Rank</th>
-                                            <th>Fund Name</th>
-                                            <th>Category</th>
-                                            <th>Current Value</th>
-                                            <th>Allocation %</th>
-                                            <th>Total P/L</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="topHoldingsTable">
-                                        <tr><td colspan="6" class="loading">Loading data...</td></tr>
-                                    </tbody>
-                                </table>
+                            <h3 class="section-title">Category Allocation — Client vs Portfolio</h3>
+                            <p class="section-subtitle">How this client's allocation compares to the overall portfolio mix</p>
+                            <div class="pie-charts-row" id="pieChartsRow">
+                                <div class="pie-chart-panel">
+                                    <h4 class="pie-chart-title">This Client</h4>
+                                    <canvas id="clientPieChart"></canvas>
+                                </div>
+                                <div class="pie-chart-panel">
+                                    <h4 class="pie-chart-title">Overall Portfolio</h4>
+                                    <canvas id="portfolioPieChart"></canvas>
+                                </div>
                             </div>
                         </section>
 
@@ -212,28 +206,14 @@
             <div id="masterTabContent" style="display:none;">
                 <div class="master-content">
 
-                    <!-- Fund Performance -->
+                    <!-- Merged Performance (categories + expandable fund rows) -->
                     <section class="section">
-                        <h3 class="section-title">Fund Performance vs BSE 500</h3>
-                        <p class="section-subtitle">Point-to-point returns as of <span id="masterReportDate">—</span></p>
+                        <h3 class="section-title">Performance vs BSE 500</h3>
+                        <p class="section-subtitle">Point-to-point returns as of <span id="masterReportDate">—</span> &bull; click a category row to expand fund-level detail</p>
                         <div class="table-responsive">
                             <table class="data-table perf-table">
-                                <thead id="fundPerfHead"></thead>
-                                <tbody id="fundPerfBody">
-                                    <tr><td colspan="10" class="loading">Loading performance data...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-
-                    <!-- Category Performance -->
-                    <section class="section">
-                        <h3 class="section-title">Category Performance vs BSE 500</h3>
-                        <p class="section-subtitle">Equal-weight average of active funds per category</p>
-                        <div class="table-responsive">
-                            <table class="data-table perf-table">
-                                <thead id="catPerfHead"></thead>
-                                <tbody id="catPerfBody">
+                                <thead id="mergedPerfHead"></thead>
+                                <tbody id="mergedPerfBody">
                                     <tr><td colspan="10" class="loading">Loading performance data...</td></tr>
                                 </tbody>
                             </table>
@@ -248,28 +228,14 @@
                         </div>
                     </section>
 
-                    <!-- Client × Fund Matrix -->
+                    <!-- Merged Allocation Matrix (categories + expandable fund rows) -->
                     <section class="section">
-                        <h3 class="section-title">Client &times; Fund Allocation (%)</h3>
-                        <p class="section-subtitle">% of each client's portfolio in each fund &mdash; darker = larger allocation</p>
+                        <h3 class="section-title">Client Allocation (%)</h3>
+                        <p class="section-subtitle">% of each client's portfolio per category &mdash; click a category row to see individual fund breakdown &mdash; darker = larger allocation</p>
                         <div class="table-responsive">
                             <table class="data-table matrix-table">
-                                <thead id="fundMatrixHead"></thead>
-                                <tbody id="fundMatrixBody">
-                                    <tr><td colspan="10" class="loading">Loading allocation data...</td></tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-
-                    <!-- Client × Category Matrix -->
-                    <section class="section">
-                        <h3 class="section-title">Client &times; Category Allocation (%)</h3>
-                        <p class="section-subtitle">% of each client's portfolio in each category</p>
-                        <div class="table-responsive">
-                            <table class="data-table matrix-table">
-                                <thead id="catMatrixHead"></thead>
-                                <tbody id="catMatrixBody">
+                                <thead id="mergedMatrixHead"></thead>
+                                <tbody id="mergedMatrixBody">
                                     <tr><td colspan="10" class="loading">Loading allocation data...</td></tr>
                                 </tbody>
                             </table>
@@ -340,6 +306,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>

@@ -5,12 +5,13 @@ import io
 import tempfile
 from pathlib import Path
 from datetime import datetime
+from collections import defaultdict
 
 from openpyxl import load_workbook
 from create_client_factsheet_report import (
     read_master, read_transactions, read_bse_prices,
     read_current_navs, read_client_file_csv, build_client_reports, generate_client_pdf,
-    REPORT_DATE,
+    REPORT_DATE, CATEGORY_ORDER,
 )
 
 app = Flask(__name__)
@@ -24,6 +25,42 @@ app.config['UPLOAD_FOLDER'] = str(_TEMP_DIR)
 # Global state: store reports and metadata in session
 reports_cache = {}
 current_file = None
+
+
+def _build_all_holdings(report):
+    rows = [
+        {
+            'name': h.scheme_name,
+            'category': h.category,
+            'isin': h.isin,
+            'units': h.units,
+            'cost_value': h.cost_value,
+            'current_nav': h.current_nav,
+            'current_value': h.current_value,
+            'allocation_pct': (h.current_value / report.current_value * 100) if report.current_value else 0,
+            'unrealized_pl': h.unrealized_pl,
+            'realized_pl': h.realized_pl,
+            'total_pl': h.total_pl,
+            'is_cash': False,
+        }
+        for h in report.holdings
+    ]
+    if report.only_cash > 0:
+        rows.append({
+            'name': 'Cash (Uninvested)',
+            'category': 'Only Cash',
+            'isin': None,
+            'units': None,
+            'cost_value': report.only_cash,
+            'current_nav': None,
+            'current_value': report.only_cash,
+            'allocation_pct': (report.only_cash / report.current_value * 100) if report.current_value else 0,
+            'unrealized_pl': 0.0,
+            'realized_pl': 0.0,
+            'total_pl': 0.0,
+            'is_cash': True,
+        })
+    return rows
 
 
 @app.route('/')
@@ -90,6 +127,19 @@ def upload_file():
             reports_cache['reports'] = reports
             reports_cache['bse_prices'] = bse_prices
             reports_cache['file_path'] = filepath
+
+            # Portfolio-wide category allocation (used by client pie chart comparison)
+            valid_reports = [r for r in reports if r.cost_value > 0]
+            total_portfolio_value = sum(r.current_value for r in valid_reports)
+            portfolio_cat_values = defaultdict(float)
+            for r in valid_reports:
+                for row in r.category_rows:
+                    portfolio_cat_values[row['Category']] += row['Current Value']
+            reports_cache['portfolio_allocation'] = {
+                cat: (portfolio_cat_values.get(cat, 0.0) / total_portfolio_value * 100)
+                for cat in CATEGORY_ORDER
+                if portfolio_cat_values.get(cat, 0.0) > 0
+            } if total_portfolio_value else {}
 
             client_list = [
                 {'id': i, 'name': r.client_name, 'ucc': r.ucc,
@@ -184,23 +234,18 @@ def get_client_data(client_id):
             for i, h in enumerate(report.top_holdings)
         ],
 
-        # All holdings
-        'all_holdings': [
-            {
-                'name': h.scheme_name,
-                'category': h.category,
-                'isin': h.isin,
-                'units': h.units,
-                'cost_value': h.cost_value,
-                'current_nav': h.current_nav,
-                'current_value': h.current_value,
-                'allocation_pct': (h.current_value / report.current_value * 100) if report.current_value else 0,
-                'unrealized_pl': h.unrealized_pl,
-                'realized_pl': h.realized_pl,
-                'total_pl': h.total_pl,
-            }
-            for h in report.holdings
-        ],
+        # All holdings (fund rows + optional cash row)
+        'all_holdings': _build_all_holdings(report),
+
+        # Grand total row
+        'grand_total': {
+            'cost_value': report.cost_value,
+            'current_value': report.current_value,
+            'total_pl': report.total_pl,
+        },
+
+        # Portfolio-wide category allocation for comparison pie chart
+        'portfolio_allocation': reports_cache.get('portfolio_allocation', {}),
     }
 
     return jsonify(client_data)

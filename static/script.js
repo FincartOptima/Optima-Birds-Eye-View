@@ -11,6 +11,20 @@ let masterData = null;
 let consolidatedLoaded = false;
 let consolidatedData = null;
 let hasMasterFile = false;
+let clientPieChart = null;
+let portfolioPieChart = null;
+
+const CAT_COLORS = {
+    'Indian Equity':  '#14365C',
+    'Foreign Equity': '#3A7CA5',
+    'Gold':           '#C5922E',
+    'Debt':           '#5DADE2',
+    'Cash Fund':      '#7DCEA0',
+    'Only Cash':      '#A0B4C8',
+};
+function catColor(name, idx) {
+    return CAT_COLORS[name] || ['#14365C','#3A7CA5','#C5922E','#5DADE2','#7DCEA0','#A0B4C8'][idx % 6];
+}
 
 // ============================================================
 // Utility Functions
@@ -246,8 +260,8 @@ function renderClientData() {
     bxirr.textContent = 'BSE 500: ' + (data.metrics.benchmark_xirr !== null ? formatPercentage(data.metrics.benchmark_xirr) : 'N/A');
 
     renderCategoriesTable(data.categories);
-    renderTopHoldingsTable(data.top_holdings);
-    renderAllHoldingsTable(data.all_holdings);
+    renderCategoryPieChart(data);
+    renderAllHoldingsTable(data.all_holdings, data.grand_total);
 }
 
 function renderCategoriesTable(categories) {
@@ -268,43 +282,90 @@ function renderCategoriesTable(categories) {
     `).join('');
 }
 
-function renderTopHoldingsTable(holdings) {
-    const tbody = document.getElementById('topHoldingsTable');
-    if (!holdings || holdings.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="loading">No holdings</td></tr>';
-        return;
+function renderCategoryPieChart(data) {
+    if (clientPieChart)    { clientPieChart.destroy();    clientPieChart = null; }
+    if (portfolioPieChart) { portfolioPieChart.destroy(); portfolioPieChart = null; }
+
+    const clientCats = (data.categories || []).filter(c => c.allocation_pct > 0.1);
+    const portAlloc  = data.portfolio_allocation || {};
+    const portEntries = Object.entries(portAlloc).filter(([, v]) => v > 0.1);
+
+    function makeChart(canvasId, labels, values) {
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return null;
+        return new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels,
+                datasets: [{
+                    data: values,
+                    backgroundColor: labels.map((l, i) => catColor(l, i)),
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            generateLabels: chart => chart.data.labels.map((label, i) => ({
+                                text: `${label}  ${chart.data.datasets[0].data[i].toFixed(1)}%`,
+                                fillStyle: chart.data.datasets[0].backgroundColor[i],
+                                strokeStyle: '#fff',
+                                lineWidth: 1,
+                                index: i,
+                            })),
+                            font: { size: 12 },
+                            color: '#2C3E50',
+                            padding: 14,
+                        }
+                    },
+                    tooltip: {
+                        callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toFixed(2)}%` }
+                    }
+                }
+            }
+        });
     }
-    tbody.innerHTML = holdings.map(h => `
-        <tr>
-            <td><strong>${h.rank}</strong></td>
-            <td>${h.name}</td>
-            <td>${h.category}</td>
-            <td class="number">${formatCurrency(h.current_value)}</td>
-            <td class="number"><strong>${h.allocation_pct.toFixed(2)}%</strong></td>
-            <td class="number ${h.total_pl >= 0 ? 'positive' : 'negative'}">${formatCurrency(h.total_pl)}</td>
-        </tr>
-    `).join('');
+
+    clientPieChart    = makeChart('clientPieChart',    clientCats.map(c => c.name),    clientCats.map(c => c.allocation_pct));
+    portfolioPieChart = makeChart('portfolioPieChart', portEntries.map(([k]) => k),    portEntries.map(([, v]) => v));
 }
 
-function renderAllHoldingsTable(holdings) {
+function renderAllHoldingsTable(holdings, grandTotal) {
     const tbody = document.getElementById('allHoldingsTable');
     if (!holdings || holdings.length === 0) {
         tbody.innerHTML = '<tr><td colspan="9" class="loading">No holdings</td></tr>';
         return;
     }
-    tbody.innerHTML = holdings.map(h => `
-        <tr>
+    let html = holdings.map(h => `
+        <tr${h.is_cash ? ' class="cash-row"' : ''}>
             <td>${h.name}</td>
             <td>${h.category}</td>
-            <td><code>${h.isin}</code></td>
-            <td class="number">${formatNumber(h.units)}</td>
+            <td><code>${h.isin || '—'}</code></td>
+            <td class="number">${h.units != null ? formatNumber(h.units) : '—'}</td>
             <td class="number">${formatCurrency(h.cost_value)}</td>
-            <td class="number">${formatNumber(h.current_nav)}</td>
+            <td class="number">${h.current_nav != null ? formatNumber(h.current_nav) : '—'}</td>
             <td class="number">${formatCurrency(h.current_value)}</td>
             <td class="number"><strong>${h.allocation_pct.toFixed(2)}%</strong></td>
             <td class="number ${h.total_pl >= 0 ? 'positive' : 'negative'}">${formatCurrency(h.total_pl)}</td>
         </tr>
     `).join('');
+    if (grandTotal) {
+        const plClass = grandTotal.total_pl >= 0 ? 'positive' : 'negative';
+        html += `
+            <tr class="grand-total-row">
+                <td colspan="4"><strong>Grand Total</strong></td>
+                <td class="number"><strong>${formatCurrency(grandTotal.cost_value)}</strong></td>
+                <td class="number">—</td>
+                <td class="number"><strong>${formatCurrency(grandTotal.current_value)}</strong></td>
+                <td class="number"><strong>100.00%</strong></td>
+                <td class="number ${plClass}"><strong>${formatCurrency(grandTotal.total_pl)}</strong></td>
+            </tr>`;
+    }
+    tbody.innerHTML = html;
 }
 
 // ============================================================
@@ -394,11 +455,9 @@ async function loadMasterData() {
 function renderMasterDashboard() {
     if (!masterData) return;
     document.getElementById('masterReportDate').textContent = masterData.report_date;
-    renderFundPerfTable();
-    renderCatPerfTable();
+    renderMergedPerfTable();
     renderCashSummary();
-    renderFundMatrix();
-    renderCatMatrix();
+    renderMergedMatrix();
 }
 
 /* Return cell: green positive, red negative, gray N/A */
@@ -411,61 +470,49 @@ function returnCell(val) {
     return `<td class="number ${cls}">${sign}${val.toFixed(2)}%</td>`;
 }
 
-function renderFundPerfTable() {
+function renderMergedPerfTable() {
     const periods = masterData.period_labels;
-    const bse = masterData.bse_returns;
+    const bse     = masterData.bse_returns;
 
-    document.getElementById('fundPerfHead').innerHTML = `
+    document.getElementById('mergedPerfHead').innerHTML = `
         <tr>
-            <th style="min-width:200px">Fund</th>
+            <th style="min-width:220px">Category / Fund</th>
             ${periods.map(p => `<th style="min-width:70px;text-align:right">${p}</th>`).join('')}
         </tr>`;
 
     let html = '';
-    let currentCat = null;
-
-    for (const fund of masterData.fund_performance) {
-        if (fund.category !== currentCat) {
-            currentCat = fund.category;
-            html += `<tr class="cat-group-header"><td colspan="${1 + periods.length}">${currentCat}</td></tr>`;
-        }
-        html += `<tr>
-            <td class="fund-name-cell">${fund.name}</td>
-            ${periods.map(p => returnCell(fund.returns[p])).join('')}
+    masterData.category_performance.forEach((cat, idx) => {
+        const catId   = `pc${idx}`;
+        const funds   = masterData.fund_performance.filter(f => f.category === cat.name);
+        const cols    = 1 + periods.length;
+        html += `<tr class="cat-summary-row" onclick="togglePerfCat('${catId}','${cols}')">
+            <td><span class="acc-caret" id="caret-${catId}">▸</span><strong>${cat.name}</strong>
+                <span style="font-size:0.75rem;color:var(--text-light);margin-left:6px">(${funds.length} fund${funds.length !== 1 ? 's' : ''})</span>
+            </td>
+            ${periods.map(p => returnCell(cat.returns[p])).join('')}
         </tr>`;
-    }
+        funds.forEach(fund => {
+            html += `<tr class="acc-fund-row perf-sub-${catId}" style="display:none">
+                <td class="fund-name-cell fund-indent">${fund.name}</td>
+                ${periods.map(p => returnCell(fund.returns[p])).join('')}
+            </tr>`;
+        });
+    });
 
     html += `<tr class="bse-row">
         <td><strong>BSE 500 (Benchmark)</strong></td>
         ${periods.map(p => returnCell(bse[p])).join('')}
     </tr>`;
 
-    document.getElementById('fundPerfBody').innerHTML = html;
+    document.getElementById('mergedPerfBody').innerHTML = html;
 }
 
-function renderCatPerfTable() {
-    const periods = masterData.period_labels;
-    const bse = masterData.bse_returns;
-
-    document.getElementById('catPerfHead').innerHTML = `
-        <tr>
-            <th style="min-width:180px">Category</th>
-            ${periods.map(p => `<th style="min-width:70px;text-align:right">${p}</th>`).join('')}
-        </tr>`;
-
-    let html = masterData.category_performance.map(cat => `
-        <tr>
-            <td><strong>${cat.name}</strong></td>
-            ${periods.map(p => returnCell(cat.returns[p])).join('')}
-        </tr>
-    `).join('');
-
-    html += `<tr class="bse-row">
-        <td><strong>BSE 500 (Benchmark)</strong></td>
-        ${periods.map(p => returnCell(bse[p])).join('')}
-    </tr>`;
-
-    document.getElementById('catPerfBody').innerHTML = html;
+function togglePerfCat(catId) {
+    const rows  = document.querySelectorAll(`.perf-sub-${catId}`);
+    const caret = document.getElementById(`caret-${catId}`);
+    const open  = rows.length > 0 && rows[0].style.display !== 'none';
+    rows.forEach(r => r.style.display = open ? 'none' : 'table-row');
+    if (caret) caret.textContent = open ? '▸' : '▾';
 }
 
 function renderCashSummary() {
@@ -520,46 +567,51 @@ function heatCell(val, max) {
     return `<td class="matrix-cell" style="background:${bg};color:${fg}">${val.toFixed(1)}%</td>`;
 }
 
-function renderFundMatrix() {
-    const { clients, funds, data } = masterData.client_fund_matrix;
+function renderMergedMatrix() {
+    const { clients, categories, data: catData } = masterData.client_category_matrix;
+    const { funds, data: fundData }               = masterData.client_fund_matrix;
 
-    let max = 0;
-    for (const vals of Object.values(data))
-        for (const v of vals) if (v > max) max = v;
+    // Fund → category lookup
+    const fundCat = {};
+    for (const f of masterData.fund_performance) fundCat[f.name] = f.category;
 
-    document.getElementById('fundMatrixHead').innerHTML = `
+    let maxCat = 0, maxFund = 0;
+    for (const vals of Object.values(catData))  for (const v of vals) if (v > maxCat)  maxCat  = v;
+    for (const vals of Object.values(fundData)) for (const v of vals) if (v > maxFund) maxFund = v;
+
+    document.getElementById('mergedMatrixHead').innerHTML = `
         <tr>
-            <th style="min-width:200px">Fund</th>
+            <th style="min-width:190px">Category / Fund</th>
             ${clients.map(c => `<th class="client-col">${c}</th>`).join('')}
         </tr>`;
 
-    document.getElementById('fundMatrixBody').innerHTML = funds.map(fund => `
-        <tr>
-            <td class="fund-name-cell" title="${fund}">${fund}</td>
-            ${data[fund].map(v => heatCell(v, max)).join('')}
-        </tr>
-    `).join('');
+    let html = '';
+    categories.forEach((cat, idx) => {
+        const catId      = `mc${idx}`;
+        const fundsInCat = funds.filter(f => fundCat[f] === cat);
+        html += `<tr class="cat-summary-row" onclick="toggleMatrixCat('${catId}')">
+            <td><span class="acc-caret" id="mcaret-${catId}">▸</span><strong>${cat}</strong>
+                <span style="font-size:0.75rem;color:var(--text-light);margin-left:6px">(${fundsInCat.length} fund${fundsInCat.length !== 1 ? 's' : ''})</span>
+            </td>
+            ${(catData[cat] || []).map(v => heatCell(v, maxCat)).join('')}
+        </tr>`;
+        fundsInCat.forEach(fund => {
+            html += `<tr class="acc-fund-row matrix-sub-${catId}" style="display:none">
+                <td class="fund-name-cell fund-indent" title="${fund}">${fund}</td>
+                ${(fundData[fund] || []).map(v => heatCell(v, maxFund)).join('')}
+            </tr>`;
+        });
+    });
+
+    document.getElementById('mergedMatrixBody').innerHTML = html;
 }
 
-function renderCatMatrix() {
-    const { clients, categories, data } = masterData.client_category_matrix;
-
-    let max = 0;
-    for (const vals of Object.values(data))
-        for (const v of vals) if (v > max) max = v;
-
-    document.getElementById('catMatrixHead').innerHTML = `
-        <tr>
-            <th style="min-width:180px">Category</th>
-            ${clients.map(c => `<th class="client-col">${c}</th>`).join('')}
-        </tr>`;
-
-    document.getElementById('catMatrixBody').innerHTML = categories.map(cat => `
-        <tr>
-            <td><strong>${cat}</strong></td>
-            ${(data[cat] || []).map(v => heatCell(v, max)).join('')}
-        </tr>
-    `).join('');
+function toggleMatrixCat(catId) {
+    const rows  = document.querySelectorAll(`.matrix-sub-${catId}`);
+    const caret = document.getElementById(`mcaret-${catId}`);
+    const open  = rows.length > 0 && rows[0].style.display !== 'none';
+    rows.forEach(r => r.style.display = open ? 'none' : 'table-row');
+    if (caret) caret.textContent = open ? '▸' : '▾';
 }
 
 // ============================================================

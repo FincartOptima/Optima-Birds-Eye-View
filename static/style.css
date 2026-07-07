@@ -900,6 +900,84 @@ body {
 }
 
 /* ============================================================
+   Accordion rows (merged performance + matrix tables)
+   ============================================================ */
+
+.cat-summary-row {
+    cursor: pointer;
+    background: var(--light-blue) !important;
+}
+.cat-summary-row:hover {
+    background: #d0dff0 !important;
+}
+.cat-summary-row td:first-child {
+    font-weight: 700;
+    color: var(--navy);
+}
+.acc-caret {
+    display: inline-block;
+    width: 14px;
+    font-size: 0.72rem;
+    color: var(--navy);
+    margin-right: 6px;
+    transition: transform 0.15s ease;
+}
+.fund-indent {
+    padding-left: 36px !important;
+    font-size: 0.87rem;
+    color: var(--text-med);
+}
+.acc-fund-row { background: #fafcff; }
+.acc-fund-row:hover { background: var(--light-blue) !important; }
+
+/* ============================================================
+   Grand total + cash rows (All Holdings table)
+   ============================================================ */
+
+.grand-total-row td {
+    background: var(--navy) !important;
+    color: var(--white) !important;
+    font-weight: 700;
+    border-top: 2px solid var(--gold);
+}
+.grand-total-row td.positive,
+.grand-total-row td.negative { color: var(--white) !important; }
+
+.cash-row td {
+    background: #f8f6ee !important;
+    font-style: italic;
+    color: var(--text-med);
+}
+
+/* ============================================================
+   Category pie charts (Client vs Portfolio)
+   ============================================================ */
+
+.pie-charts-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+    padding: 10px 0;
+}
+.pie-chart-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+.pie-chart-title {
+    color: var(--navy);
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .pie-charts-row { grid-template-columns: 1fr; }
+}
+
+/* ============================================================
    Utility Classes
    ============================================================ */
 
