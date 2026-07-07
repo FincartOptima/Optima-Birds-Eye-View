@@ -199,6 +199,40 @@
                                 </table>
                             </div>
                         </section>
+
+                        <!-- Portfolio Adjust -->
+                        <section class="section" id="portfolioAdjustSection">
+                            <h3 class="section-title">Portfolio Adjust</h3>
+                            <p class="section-subtitle">Drag sliders or edit percentages to model a rebalanced allocation</p>
+                            <div class="adjust-layout">
+                                <div class="adjust-table-wrap">
+                                    <table class="data-table adjust-table">
+                                        <thead>
+                                            <tr>
+                                                <th style="min-width:180px">Fund</th>
+                                                <th class="num" style="width:90px">Current %</th>
+                                                <th style="width:180px">Adjust</th>
+                                                <th class="num" style="width:95px">New %</th>
+                                                <th class="num" style="width:85px">Change</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="adjustBody">
+                                            <tr><td colspan="5" class="loading">Select a client to begin</td></tr>
+                                        </tbody>
+                                        <tfoot id="adjustFoot"></tfoot>
+                                    </table>
+                                    <div class="adjust-actions">
+                                        <button class="btn btn-secondary" onclick="resetAdjust()">&#8634; Reset to Original</button>
+                                        <span class="adjust-total-hint" id="adjustTotalHint"></span>
+                                    </div>
+                                </div>
+                                <div class="adjust-chart-wrap">
+                                    <h4 class="pie-chart-title">Adjusted Allocation</h4>
+                                    <canvas id="adjustPieChart"></canvas>
+                                </div>
+                            </div>
+                        </section>
+
                 </div><!-- /.factsheet -->
             </div><!-- /#clientTabContent -->
 

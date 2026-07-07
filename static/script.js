@@ -13,6 +13,8 @@ let consolidatedData = null;
 let hasMasterFile = false;
 let clientPieChart = null;
 let portfolioPieChart = null;
+let adjustPieChart = null;
+let adjustAllocations = [];
 
 const CAT_COLORS = {
     'Indian Equity':  '#14365C',
@@ -262,6 +264,7 @@ function renderClientData() {
     renderCategoriesTable(data.categories);
     renderCategoryPieChart(data);
     renderAllHoldingsTable(data.all_holdings, data.grand_total);
+    renderPortfolioAdjust(data);
 }
 
 function renderCategoriesTable(categories) {
@@ -415,6 +418,8 @@ function resetApp() {
     consolidatedLoaded = false;
     consolidatedData = null;
     hasMasterFile = false;
+    adjustAllocations = [];
+    if (adjustPieChart) { adjustPieChart.destroy(); adjustPieChart = null; }
 
     document.getElementById('uploadSection').style.display = 'block';
     document.getElementById('mainSection').style.display = 'none';
@@ -724,6 +729,168 @@ function toggleClientDetail(idx) {
     const open = row.style.display !== 'none';
     row.style.display = open ? 'none' : 'table-row';
     caret.textContent = open ? '▸' : '▾';
+}
+
+// ============================================================
+// Portfolio Adjust
+// ============================================================
+
+const ADJUST_PALETTE = [
+    '#14365C','#3A7CA5','#C5922E','#5DADE2','#7DCEA0','#E74C3C',
+    '#8E44AD','#F39C12','#2ECC71','#1ABC9C','#E67E22','#9B59B6',
+    '#34495E','#16A085','#D35400','#A0B4C8',
+];
+
+function renderPortfolioAdjust(data) {
+    const holdings = data.all_holdings || [];
+    if (!holdings.length) {
+        document.getElementById('adjustBody').innerHTML =
+            '<tr><td colspan="5" class="loading">No holdings to adjust</td></tr>';
+        return;
+    }
+
+    adjustAllocations = holdings.map(h => ({
+        name: h.name,
+        category: h.category,
+        isCash: h.is_cash,
+        originalPct: h.allocation_pct,
+        newPct: h.allocation_pct,
+    }));
+
+    buildAdjustTable();
+    createAdjustChart();
+}
+
+function buildAdjustTable() {
+    const tbody = document.getElementById('adjustBody');
+    tbody.innerHTML = adjustAllocations.map((item, i) => {
+        const change = item.newPct - item.originalPct;
+        return `<tr class="${item.isCash ? 'cash-row' : ''}">
+            <td class="adjust-fund-name" title="${item.name}">${item.name}</td>
+            <td class="num">${item.originalPct.toFixed(2)}%</td>
+            <td>
+                <input type="range" class="adjust-slider" id="aslider-${i}"
+                    min="0" max="100" step="0.1" value="${item.newPct}"
+                    oninput="onAdjustSlider(${i},this.value)">
+            </td>
+            <td class="num">
+                <input type="number" class="adjust-input" id="ainput-${i}"
+                    min="0" max="100" step="0.1" value="${item.newPct.toFixed(2)}"
+                    onchange="onAdjustInput(${i},this.value)">
+            </td>
+            <td class="num" id="achange-${i}">${fmtChange(change)}</td>
+        </tr>`;
+    }).join('');
+    refreshAdjustTotals();
+}
+
+function fmtChange(v) {
+    if (Math.abs(v) < 0.01) return '<span style="color:var(--text-light)">—</span>';
+    const cls = v > 0 ? 'positive' : 'negative';
+    return `<span class="${cls}">${v > 0 ? '+' : ''}${v.toFixed(2)}%</span>`;
+}
+
+function onAdjustSlider(idx, val) {
+    const pct = parseFloat(val);
+    adjustAllocations[idx].newPct = pct;
+    document.getElementById(`ainput-${idx}`).value = pct.toFixed(2);
+    document.getElementById(`achange-${idx}`).innerHTML =
+        fmtChange(pct - adjustAllocations[idx].originalPct);
+    refreshAdjustTotals();
+    updateAdjustChart();
+}
+
+function onAdjustInput(idx, val) {
+    const pct = Math.max(0, Math.min(100, parseFloat(val) || 0));
+    adjustAllocations[idx].newPct = pct;
+    document.getElementById(`aslider-${idx}`).value = pct;
+    document.getElementById(`ainput-${idx}`).value = pct.toFixed(2);
+    document.getElementById(`achange-${idx}`).innerHTML =
+        fmtChange(pct - adjustAllocations[idx].originalPct);
+    refreshAdjustTotals();
+    updateAdjustChart();
+}
+
+function refreshAdjustTotals() {
+    const total = adjustAllocations.reduce((s, a) => s + a.newPct, 0);
+    const ok = Math.abs(total - 100) < 0.1;
+    const cls = ok ? 'positive' : 'negative';
+
+    document.getElementById('adjustFoot').innerHTML = `
+        <tr class="adjust-total-row">
+            <td colspan="3"><strong>Total</strong></td>
+            <td class="num"><strong class="${cls}">${total.toFixed(2)}%</strong></td>
+            <td></td>
+        </tr>`;
+
+    const hint = document.getElementById('adjustTotalHint');
+    if (ok) {
+        hint.textContent = 'Allocations sum to 100%';
+        hint.className = 'adjust-total-hint ok';
+    } else {
+        hint.textContent = `Total is ${total.toFixed(2)}% — adjust to reach 100%`;
+        hint.className = 'adjust-total-hint warn';
+    }
+}
+
+function resetAdjust() {
+    adjustAllocations.forEach(a => { a.newPct = a.originalPct; });
+    buildAdjustTable();
+    updateAdjustChart();
+}
+
+function truncName(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+function createAdjustChart() {
+    if (adjustPieChart) { adjustPieChart.destroy(); adjustPieChart = null; }
+    const ctx = document.getElementById('adjustPieChart');
+    if (!ctx) return;
+
+    const items = adjustAllocations.filter(a => a.newPct > 0.05);
+    adjustPieChart = new Chart(ctx, {
+        type: 'pie',
+        data: {
+            labels: items.map(a => truncName(a.name, 28)),
+            datasets: [{
+                data: items.map(a => a.newPct),
+                backgroundColor: items.map((_, i) => ADJUST_PALETTE[i % ADJUST_PALETTE.length]),
+                borderColor: '#ffffff',
+                borderWidth: 2,
+            }]
+        },
+        options: {
+            responsive: true,
+            animation: { duration: 400 },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: {
+                        generateLabels: chart => chart.data.labels.map((label, i) => ({
+                            text: `${label}  ${chart.data.datasets[0].data[i].toFixed(1)}%`,
+                            fillStyle: chart.data.datasets[0].backgroundColor[i],
+                            strokeStyle: '#fff', lineWidth: 1, index: i,
+                        })),
+                        font: { size: 11 },
+                        color: '#2C3E50',
+                        padding: 10,
+                    }
+                },
+                tooltip: {
+                    callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toFixed(2)}%` }
+                }
+            }
+        }
+    });
+}
+
+function updateAdjustChart() {
+    if (!adjustPieChart) { createAdjustChart(); return; }
+    const items = adjustAllocations.filter(a => a.newPct > 0.05);
+    adjustPieChart.data.labels = items.map(a => truncName(a.name, 28));
+    adjustPieChart.data.datasets[0].data = items.map(a => a.newPct);
+    adjustPieChart.data.datasets[0].backgroundColor =
+        items.map((_, i) => ADJUST_PALETTE[i % ADJUST_PALETTE.length]);
+    adjustPieChart.update('none');
 }
 
 // ============================================================

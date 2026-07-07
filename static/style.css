@@ -978,6 +978,109 @@ body {
 }
 
 /* ============================================================
+   Portfolio Adjust
+   ============================================================ */
+
+.adjust-layout {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 30px;
+    align-items: start;
+}
+.adjust-table-wrap { overflow-x: auto; }
+.adjust-chart-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    position: sticky;
+    top: 20px;
+}
+@media (max-width: 960px) {
+    .adjust-layout { grid-template-columns: 1fr; }
+    .adjust-chart-wrap { position: static; }
+}
+
+.adjust-table { font-size: 0.9rem; }
+.adjust-fund-name {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Slider */
+.adjust-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--light-blue) 0%, var(--border-color) 100%);
+    outline: none;
+    cursor: pointer;
+}
+.adjust-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--navy);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    cursor: grab;
+}
+.adjust-slider::-moz-range-thumb {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--navy);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+    cursor: grab;
+}
+.adjust-slider:active::-webkit-slider-thumb { cursor: grabbing; background: var(--dark-navy); }
+.adjust-slider:active::-moz-range-thumb     { cursor: grabbing; background: var(--dark-navy); }
+
+/* Number input */
+.adjust-input {
+    width: 80px;
+    padding: 5px 6px;
+    border: 1.5px solid var(--border-color);
+    border-radius: 4px;
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    font-size: 0.88rem;
+    color: var(--text-dark);
+    background: #fff;
+}
+.adjust-input:focus {
+    outline: none;
+    border-color: var(--navy);
+    box-shadow: 0 0 0 2px rgba(20,54,92,0.12);
+}
+
+/* Total row */
+.adjust-total-row td {
+    background: var(--light-blue) !important;
+    border-top: 2px solid var(--navy);
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+/* Actions bar */
+.adjust-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 14px;
+}
+.adjust-total-hint {
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+.adjust-total-hint.ok   { color: var(--success); }
+.adjust-total-hint.warn { color: var(--danger); }
+
+/* ============================================================
    Utility Classes
    ============================================================ */
 
