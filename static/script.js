@@ -590,9 +590,7 @@ function renderMergedMatrix() {
         const catId      = `mc${idx}`;
         const fundsInCat = funds.filter(f => fundCat[f] === cat);
         html += `<tr class="cat-summary-row" onclick="toggleMatrixCat('${catId}')">
-            <td><span class="acc-caret" id="mcaret-${catId}">▸</span><strong>${cat}</strong>
-                <span style="font-size:0.75rem;color:var(--text-light);margin-left:6px">(${fundsInCat.length} fund${fundsInCat.length !== 1 ? 's' : ''})</span>
-            </td>
+            <td><span class="acc-caret" id="mcaret-${catId}">▸</span><strong>${cat}</strong></td>
             ${(catData[cat] || []).map(v => heatCell(v, maxCat)).join('')}
         </tr>`;
         fundsInCat.forEach(fund => {

@@ -4,6 +4,7 @@ import csv
 import io
 import math
 import re
+import sys
 from bisect import bisect_right
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -988,9 +989,8 @@ def _make_bar_image(labels: list[str], values: list[float]) -> ImageReader:
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.set_xlabel("Direct Schemes", fontsize=7)
-    plt.tight_layout()
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight", transparent=True, pad_inches=0.02)
+    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight", transparent=True, pad_inches=0.1)
     plt.close(fig)
     buf.seek(0)
     return ImageReader(buf)
@@ -1363,6 +1363,10 @@ def _draw_pdf_disclaimer(c: PdfCanvas) -> None:
 
 
 def generate_client_pdf(report: ClientReport, output_path: Path) -> None:
+    # Matplotlib font_manager + ReportLab text rendering can exceed the
+    # default 1000-frame limit on Windows during the first PDF of a session.
+    if sys.getrecursionlimit() < 5000:
+        sys.setrecursionlimit(5000)
     c = PdfCanvas(str(output_path), pagesize=A4)
 
     # --- Page 1 ---
