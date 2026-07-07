@@ -288,10 +288,14 @@ def download_client_pdf(client_id):
             download_name=filename
         )
     except Exception as e:
-        print(f"Error generating PDF: {str(e)}")
         import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'Error generating PDF: {str(e)}'}), 500
+        tb = traceback.format_exc()
+        print(f"=== PDF GENERATION ERROR ===\n{tb}\n===========================")
+        # Include the last frame of the traceback in the response so the
+        # error modal shows the actual failing line, not just the message.
+        last_frame = tb.strip().splitlines()[-2:] if tb else []
+        detail = ' | '.join(line.strip() for line in last_frame)
+        return jsonify({'error': f'Error generating PDF: {str(e)}\n{detail}'}), 500
 
 
 @app.route('/api/master')

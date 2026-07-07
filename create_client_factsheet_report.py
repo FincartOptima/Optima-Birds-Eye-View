@@ -5,6 +5,11 @@ import io
 import math
 import re
 import sys
+
+# ReportLab + matplotlib font rendering on Windows can exceed the default
+# 1000-frame recursion limit. Set it high at import time so it applies to
+# every worker/thread.
+sys.setrecursionlimit(50000)
 from bisect import bisect_right
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -1363,10 +1368,8 @@ def _draw_pdf_disclaimer(c: PdfCanvas) -> None:
 
 
 def generate_client_pdf(report: ClientReport, output_path: Path) -> None:
-    # Matplotlib font_manager + ReportLab text rendering can exceed the
-    # default 1000-frame limit on Windows during the first PDF of a session.
-    if sys.getrecursionlimit() < 5000:
-        sys.setrecursionlimit(5000)
+    if sys.getrecursionlimit() < 50000:
+        sys.setrecursionlimit(50000)
     c = PdfCanvas(str(output_path), pagesize=A4)
 
     # --- Page 1 ---
