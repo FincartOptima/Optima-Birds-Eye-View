@@ -929,471 +929,220 @@ def _fmt_inr(val: float | None) -> str:
     return f"Rs {val:,.0f}"
 
 
-def _aggregate_pdf_categories(report: ClientReport) -> list[tuple[str, float]]:
-    agg: dict[str, float] = {}
-    for row in report.category_rows:
-        display_name = _PDF_CAT_DISPLAY.get(row["Category"], row["Category"])
-        agg[display_name] = agg.get(display_name, 0.0) + row["Allocation %"]
-    result = [(name, weight) for name, weight in agg.items() if weight > 0.001]
-    result.sort(key=lambda x: x[1], reverse=True)
-    return result
+def generate_client_pdf(report: ClientReport, output_path: Path) -> None:
+    """Simple, single-page factsheet — no matplotlib, minimal ReportLab calls."""
+    c = PdfCanvas(str(output_path), pagesize=A4)
+    _draw_simple_factsheet(c, report)
+    c.save()
 
 
-def _scheme_count(report: ClientReport) -> int:
-    return len([h for h in report.holdings if h.current_value > 0])
-
-
-def _matplotlib_pyplot():
-    """Import matplotlib lazily (only the PDF chart helpers need it)."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    return plt
-
-
-def _make_pie_image(labels: list[str], sizes: list[float]) -> ImageReader:
-    plt = _matplotlib_pyplot()
-    fig, ax = plt.subplots(figsize=(2.6, 2.6))
-    colors = _PIE_COLORS[: len(labels)]
-    while len(colors) < len(labels):
-        colors.append("#A0B4C8")
-    wedges, _ = ax.pie(
-        sizes,
-        colors=colors,
-        startangle=90,
-        counterclock=False,
-        wedgeprops={"width": 0.62, "edgecolor": "white", "linewidth": 1.5},
-    )
-    for wedge, size in zip(wedges, sizes):
-        ang = (wedge.theta2 + wedge.theta1) / 2
-        r = 0.72
-        x = r * math.cos(math.radians(ang))
-        y_pos = r * math.sin(math.radians(ang))
-        ax.text(x, y_pos, f"{size * 100:.1f}%", ha="center", va="center", fontsize=6.5, fontweight="bold", color="white")
-    ax.set_aspect("equal")
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight", transparent=True, pad_inches=0.02)
-    plt.close(fig)
-    buf.seek(0)
-    return ImageReader(buf)
-
-
-def _make_bar_image(labels: list[str], values: list[float]) -> ImageReader:
-    plt = _matplotlib_pyplot()
-    fig, ax = plt.subplots(figsize=(5.2, 2.0))
-    rev_labels = labels[::-1]
-    rev_values = values[::-1]
-    bars = ax.barh(rev_labels, rev_values, color=_BAR_COLOR, height=0.48, edgecolor="none")
-    for bar, val in zip(bars, rev_values):
-        ax.text(bar.get_width() + 0.25, bar.get_y() + bar.get_height() / 2, f"{val:.2f}%", va="center", fontsize=7.5, fontweight="bold")
-    ax.set_title("Top 5 Allocation (%)", fontsize=9, fontweight="bold", pad=8)
-    ax.set_xlim(0, max(values) * 1.3 if values else 10)
-    ax.tick_params(axis="y", labelsize=6.5)
-    ax.tick_params(axis="x", labelsize=7)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.set_xlabel("Direct Schemes", fontsize=7)
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight", transparent=True, pad_inches=0.1)
-    plt.close(fig)
-    buf.seek(0)
-    return ImageReader(buf)
-
-
-def _draw_pdf_header(c: PdfCanvas, y: float, report: ClientReport) -> float:
-    h = 55
-    c.setFillColor(_NAVY)
-    c.rect(_LM, y - h, _CW, h, fill=True, stroke=False)
-    # gold accent line under the header band
-    c.setFillColor(_GOLD)
-    c.rect(_LM, y - h - 3, _CW, 3, fill=True, stroke=False)
-
-    c.setFillColor(_WHITE)
-    c.setFont("Helvetica-Bold", 15)
-    c.drawString(_LM + 14, y - 20, "Fincart Direct Mutual Fund Strategic Portfolio")
-    c.setFont("Helvetica", 7.5)
-    c.drawString(_LM + 14, y - 32, "Portfolio Management Services  •  SEBI Reg. INP000006101")
-    c.setFont("Helvetica", 7)
-    c.drawString(_LM + 14, y - 44, f"Client: {report.client_name}   |   UCC: {report.ucc}")
-
-    right_x = _LM + _CW - 14
-    c.setFont("Helvetica", 7)
-    c.drawRightString(right_x, y - 12, "FACTSHEET")
-    c.setFont("Helvetica-Bold", 13)
-    c.drawRightString(right_x, y - 27, REPORT_DATE.strftime("%B %Y"))
-    c.setFont("Helvetica", 7)
-    c.drawRightString(right_x, y - 39, f"As on {REPORT_DATE.strftime('%d %B %Y')}")
-
-    return y - h
-
-
-def _draw_pdf_about(c: PdfCanvas, y: float, report: ClientReport) -> float:
-    h = 80
-    c.setFillColor(_LIGHT_BG)
-    c.rect(_LM, y - h, _CW, h, fill=True, stroke=False)
-
-    inception_dt = _inception(report)
-    inception_str = inception_dt.strftime("%d %B %Y")
-
-    c.setFillColor(_TEXT_DARK)
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(_LM + 12, y - 16, "About the Scheme:")
-
-    c.setFillColor(_TEXT_MED)
-    c.setFont("Helvetica-Oblique", 7.5)
-    c.drawString(_LM + 12, y - 29, f"Multi-Asset Strategic Allocation  •  Direct Plan Mutual Fund PMS  •  Inception {inception_str}")
-
-    c.setFillColor(_TEXT_DARK)
-    c.setFont("Helvetica", 6.8)
-    approach = (
-        "INVESTMENT APPROACH:  Strategic multi-asset allocation across Indian equity, international equity, debt, gold and arbitrage  •  "
-        "Direct-plan-only universe — preserves every bps of return  •  Diversified across market caps and themes: small-cap alpha, thematic equity, "
-        "defence and focused large-cap  •  Quarterly rebalancing anchored to a defined benchmark for measurable accountability."
-    )
-    text_obj = c.beginText(_LM + 12, y - 42)
-    text_obj.setFont("Helvetica", 6.5)
-    max_w = _CW - 24
-    words = approach.split()
-    line = ""
-    for word in words:
-        test = f"{line} {word}".strip()
-        if c.stringWidth(test, "Helvetica", 6.5) > max_w:
-            text_obj.textLine(line)
-            line = word
-        else:
-            line = test
-    if line:
-        text_obj.textLine(line)
-    c.drawText(text_obj)
-    return y - h
-
-
-def _draw_pdf_kpi(c: PdfCanvas, y: float, report: ClientReport) -> float:
-    h = 58
-    box_w = _CW / 3
+def _draw_simple_factsheet(c: PdfCanvas, report: ClientReport) -> None:
     inception_dt = _inception(report)
     gl_frac = (report.total_pl / report.cost_value) if report.cost_value else 0.0
 
-    # (background, label/sub color, default value color)
-    box_styles = [
-        (_NAVY, _WHITE, _WHITE),
-        (_DARK_NAVY, _WHITE, _WHITE),
-        (_CREAM, _TEXT_MED, _TEXT_DARK),
-    ]
-    for i, (bg, _lbl, _val) in enumerate(box_styles):
-        bx = _LM + i * box_w
-        c.setFillColor(bg)
-        c.rect(bx, y - h, box_w, h, fill=True, stroke=False)
-
-    def _draw_kpi_box(idx: int, label: str, value: str, sub: str, val_color=None):
-        bg, lbl_color, default_val = box_styles[idx]
-        if val_color is None:
-            val_color = default_val
-        bx = _LM + idx * box_w
-        cx = bx + box_w / 2
-        c.setFillColor(lbl_color)
-        c.setFont("Helvetica", 6.5)
-        c.drawCentredString(cx, y - 14, label)
-        c.setFillColor(val_color)
-        c.setFont("Helvetica-Bold", 15)
-        c.drawCentredString(cx, y - 32, value)
-        c.setFillColor(lbl_color)
-        c.setFont("Helvetica", 6)
-        c.drawCentredString(cx, y - 46, sub)
-
-    _draw_kpi_box(0, "INCEPTION", inception_dt.strftime("%d %b %Y"), "Portfolio start")
-    _draw_kpi_box(1, "ABSOLUTE GAIN / LOSS", _fmt_pct(gl_frac), _fmt_inr(report.total_pl))
-    xirr_val = _fmt_pct(report.xirr) if report.xirr is not None else "N/A"
-    bm_val = _fmt_pct(report.benchmark_xirr) if report.benchmark_xirr is not None else "N/A"
-    _draw_kpi_box(
-        2, "XIRR  •  SINCE INCEPTION", xirr_val, f"vs BSE 500  {bm_val}",
-        _pct_color(report.xirr) if report.xirr is not None else _TEXT_MED,
-    )
-
-    return y - h
-
-
-def _draw_pdf_section_header(c: PdfCanvas, y: float, title: str, subtitle: str = "") -> float:
-    h = 20
+    # ---- Header band -----------------------------------------------------
+    y = _PH - 12
     c.setFillColor(_NAVY)
-    c.rect(_LM, y - h, _CW, h, fill=True, stroke=False)
-    # gold left edge accent
+    c.rect(_LM, y - 48, _CW, 48, fill=True, stroke=False)
     c.setFillColor(_GOLD)
-    c.rect(_LM, y - h, 4, h, fill=True, stroke=False)
-    c.setFillColor(_WHITE)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(_LM + 12, y - 14, title)
-    if subtitle:
-        c.setFont("Helvetica-Oblique", 7)
-        c.drawString(_LM + 12 + c.stringWidth(title, "Helvetica-Bold", 9) + 12, y - 14, subtitle)
-    return y - h
-
-
-def _draw_pdf_strategy_tables(c: PdfCanvas, y: float, report: ClientReport) -> float:
-    left_w = _CW * 0.48
-    right_w = _CW * 0.52
-    inception_dt = _inception(report)
-
-    snapshot_data = [
-        ("Portfolio Manager", "Credent Asset Management"),
-        ("SEBI PMS Reg. No.", "INP000006101"),
-        ("Strategy Type", "Multi-Asset MF Portfolio"),
-        ("Benchmark", "BSE 500 (BSE_DLY_BSE500, 1D)"),
-        ("Investment Universe", "Direct Plan Mutual Funds"),
-        ("Custodian / Fund A/c", "Nuvama Wealth"),
-        ("Min. Investment", "Rs 50 Lakh"),
-    ]
-
-    c.setFont("Helvetica-Bold", 8.5)
-    c.setFillColor(_NAVY)
-    c.drawString(_LM + 10, y - 16, "STRATEGY SNAPSHOT")
-
-    row_h = 16
-    ty = y - 28
-    for label, value in snapshot_data:
-        c.setFillColor(_LIGHT_BLUE)
-        c.rect(_LM, ty - row_h, left_w, row_h, fill=True, stroke=False)
-        c.setStrokeColor(_BORDER)
-        c.setLineWidth(0.3)
-        c.rect(_LM, ty - row_h, left_w, row_h, fill=False, stroke=True)
-        c.setFillColor(_TEXT_DARK)
-        c.setFont("Helvetica-Bold", 7)
-        c.drawString(_LM + 8, ty - 11, label)
-        c.setFont("Helvetica", 7)
-        c.drawString(_LM + 120, ty - 11, value)
-        ty -= row_h
-
-    rx = _LM + left_w + 8
-    perf_w = right_w - 8
-    c.setFont("Helvetica-Bold", 8.5)
-    c.setFillColor(_NAVY)
-    c.drawString(rx + 6, y - 16, "PERFORMANCE (XIRR)")
-
-    hdr_y = y - 28
-    c.setFillColor(_NAVY)
-    c.rect(rx, hdr_y - 18, perf_w, 18, fill=True, stroke=False)
-    c.setFillColor(_WHITE)
-    c.setFont("Helvetica-Bold", 7)
-    c.drawString(rx + 8, hdr_y - 12, "Returns (XIRR)")
-    c.drawRightString(rx + perf_w - 8, hdr_y - 12, "Since Inception*")
-
-    row_y = hdr_y - 18
-    for label, val in [("Client Portfolio", report.xirr), ("BSE 500", report.benchmark_xirr)]:
-        c.setFillColor(_LIGHT_BLUE)
-        c.rect(rx, row_y - 20, perf_w, 20, fill=True, stroke=False)
-        c.setStrokeColor(_BORDER)
-        c.setLineWidth(0.3)
-        c.rect(rx, row_y - 20, perf_w, 20, fill=False, stroke=True)
-        c.setFillColor(_TEXT_DARK)
-        c.setFont("Helvetica-Bold", 7.5)
-        c.drawString(rx + 8, row_y - 13, label)
-        c.setFillColor(_pct_color(val))
-        c.setFont("Helvetica-Bold", 8)
-        c.drawRightString(rx + perf_w - 8, row_y - 13, _fmt_pct(val))
-        row_y -= 20
-
-    c.setFillColor(_TEXT_MED)
-    c.setFont("Helvetica-Oblique", 5.8)
-    note_y = row_y - 14
-    c.drawString(rx + 6, note_y, "*Absolute for period <1Y; ≥1Y annualised.")
-    c.drawString(rx + 6, note_y - 9, "Gross of fees, XIRR method.")
-
-    total_h = y - min(ty, note_y - 9) + 4
-    return y - max(140, total_h)
-
-
-def _draw_pdf_allocation(c: PdfCanvas, y: float, report: ClientReport) -> float:
-    cat_data = _aggregate_pdf_categories(report)
-    if not cat_data:
-        return y - 30
-
-    labels = [name for name, _ in cat_data]
-    sizes = [weight for _, weight in cat_data]
-    scheme_count = _scheme_count(report)
-
-    pie_img = _make_pie_image(labels, sizes)
-    pie_w = 155
-    pie_h = 155
-    c.drawImage(pie_img, _LM + 5, y - pie_h - 5, width=pie_w, height=pie_h, mask="auto")
-
-    tx = _LM + pie_w + 20
-    tw = _CW - pie_w - 25
-
-    hdr_h = 16
-    c.setFillColor(_NAVY)
-    c.rect(tx, y - hdr_h, tw, hdr_h, fill=True, stroke=False)
-    c.setFillColor(_WHITE)
-    c.setFont("Helvetica-Bold", 7)
-    c.drawString(tx + 6, y - 11, "Asset Class")
-    c.drawRightString(tx + tw - 6, y - 11, "Weight")
-
-    row_h = 15
-    ry = y - hdr_h
-    for i, (name, weight) in enumerate(cat_data):
-        bg = _LIGHT_BLUE if i % 2 == 0 else _WHITE
-        c.setFillColor(bg)
-        c.rect(tx, ry - row_h, tw, row_h, fill=True, stroke=False)
-        c.setStrokeColor(_BORDER)
-        c.setLineWidth(0.3)
-        c.rect(tx, ry - row_h, tw, row_h, fill=False, stroke=True)
-        c.setFillColor(_TEXT_DARK)
-        c.setFont("Helvetica", 7)
-        c.drawString(tx + 6, ry - 10, name)
-        c.setFont("Helvetica-Bold", 7)
-        c.drawRightString(tx + tw - 6, ry - 10, f"{weight * 100:.2f}%")
-        ry -= row_h
-
-    c.setFillColor(_NAVY)
-    c.rect(tx, ry - row_h, tw, row_h, fill=True, stroke=False)
-    c.setFillColor(_WHITE)
-    c.setFont("Helvetica-Bold", 7)
-    c.drawString(tx + 6, ry - 10, f"TOTAL  •  {scheme_count} underlying schemes")
-    c.drawRightString(tx + tw - 6, ry - 10, "100.00%")
-
-    total_h = max(pie_h + 10, (hdr_h + row_h * (len(cat_data) + 1)) + 5)
-    return y - total_h
-
-
-def _draw_pdf_top_holdings(c: PdfCanvas, y: float, report: ClientReport) -> float:
-    if not report.top_holdings:
-        return y - 30
-
-    labels = [h.scheme_name[:45] for h in report.top_holdings]
-    values = [
-        (h.current_value / report.current_value * 100) if report.current_value else 0.0
-        for h in report.top_holdings
-    ]
-
-    bar_img = _make_bar_image(labels, values)
-    img_w = _CW - 10
-    img_h = 145
-    c.drawImage(bar_img, _LM + 5, y - img_h - 5, width=img_w, height=img_h, mask="auto")
-    return y - img_h - 10
-
-
-def _draw_pdf_footer(c: PdfCanvas, page: int, total: int = 2) -> None:
-    fy = 18
-    c.setStrokeColor(_NAVY)
-    c.setLineWidth(0.5)
-    c.line(_LM, fy + 10, _LM + _CW, fy + 10)
-    c.setFillColor(_TEXT_MED)
-    c.setFont("Helvetica", 5.5)
-    c.drawString(
-        _LM,
-        fy,
-        "Credent Asset Management Services Pvt Ltd  |  SEBI PMS INP000006101  |  ",
-    )
-    c.setFont("Helvetica-Bold", 5.5)
-    bw = c.stringWidth(
-        "Credent Asset Management Services Pvt Ltd  |  SEBI PMS INP000006101  |  ",
-        "Helvetica", 5.5,
-    )
-    c.drawString(_LM + bw, fy, "STRICTLY CONFIDENTIAL — FOR PRIVATE CIRCULATION ONLY")
-    c.setFont("Helvetica", 5.5)
-    c.drawRightString(_LM + _CW, fy, f"Page {page} of {total}")
-
-
-def _draw_pdf_disclaimer(c: PdfCanvas) -> None:
-    y = _PH - 15
-    h = 50
-    c.setFillColor(_NAVY)
-    c.rect(_LM, y - h, _CW, h, fill=True, stroke=False)
+    c.rect(_LM, y - 51, _CW, 3, fill=True, stroke=False)
     c.setFillColor(_WHITE)
     c.setFont("Helvetica-Bold", 14)
-    c.drawString(_LM + 14, y - 22, "DISCLAIMER & STATUTORY DISCLOSURES")
-    c.setFont("Helvetica-Oblique", 7.5)
-    c.drawString(_LM + 14, y - 36, f"Credent Fincart Direct Mutual Fund Strategic Portfolio  •  {REPORT_DATE.strftime('%B %Y')}")
+    c.drawString(_LM + 14, y - 18, "Fincart Direct Mutual Fund Strategic Portfolio")
+    c.setFont("Helvetica", 8)
+    c.drawString(_LM + 14, y - 32, f"Client: {report.client_name}   |   UCC: {report.ucc}")
+    c.drawRightString(_LM + _CW - 14, y - 18, "FACTSHEET")
+    c.setFont("Helvetica-Bold", 11)
+    c.drawRightString(_LM + _CW - 14, y - 32, REPORT_DATE.strftime("%B %Y"))
+    y -= 62
 
-    paragraphs = [
-        ("General Risk.", "Prospective clients are expected to carefully consider all relevant risk factors — including financial condition, risk-return profile, tax implications, and investment objectives — before making any investment decision. Past performance is not indicative of future results."),
-        ("Market & Mutual Fund Risk.", "All products marketed by Credent Asset Management Services Pvt Ltd are subject to market risks including settlement risk, economic risk, political risk, business risk, sector risk and concentration risk. The strategy invests exclusively in direct plan mutual fund schemes; the NAV of underlying schemes is exposed to equity, debt, currency and commodity market fluctuations. Mutual fund investments are subject to market risks; please read all scheme-related documents carefully before investing."),
-        ("Performance Attribution.", "Past performance of the Portfolio Manager, the strategy, or similar products does not guarantee future performance. Returns shown are computed using the XIRR methodology. Direct plan returns are gross of all distribution / commission charges but net of fund-level expenses (TER). Individual investor returns may differ owing to timing of inflows/outflows and portfolio composition differences."),
-        ("Tax, Legal & Advisory.", "Prospective investors are advised to seek independent professional legal, accounting and tax advice before deciding on any investment or disinvestment. Credent Asset Management may have financial or business interests that could affect the objectivity of the views expressed in this document. The document is for informational purposes only and does not constitute an offer, solicitation, recommendation, or invitation to purchase or sell any investment product."),
-        ("SEBI Disclosure.", "This document has neither been approved nor disapproved by SEBI, nor has SEBI certified the accuracy or adequacy of its contents. The portfolio data and performance figures shown are as uploaded on the SEBI / APMI website as on the cover date. For peer comparison within the strategy category, please refer to: www.apmiindia.org/apmi/welcomeiaperformance.htm?action=PMSmenu. Clients have the option to onboard Credent Asset Management PMS either directly or through a SEBI-registered distributor."),
-        ("Liability & Confidentiality.", "Credent Asset Management is not liable for any losses arising from investment / disinvestment decisions made on the basis of communications received, nor for losses arising from incorrect or misleading instructions issued by clients, whether oral or written. This document is strictly confidential and intended only for the addressee; unauthorised reproduction, distribution, or use of the contents is prohibited. For the full Disclosure Document and risk factors, please contact the Portfolio Manager or visit www.credentglobal.com."),
+    # ---- KPI strip (4 boxes) --------------------------------------------
+    box_w = _CW / 4
+    box_h = 50
+    kpis = [
+        ("INVESTED",      _fmt_inr(report.cost_value),    ""),
+        ("CURRENT VALUE", _fmt_inr(report.current_value), ""),
+        ("GAIN / LOSS",   _fmt_inr(report.total_pl),      _fmt_pct(gl_frac)),
+        ("XIRR",          _fmt_pct(report.xirr) if report.xirr is not None else "N/A",
+                          f"BSE 500: {_fmt_pct(report.benchmark_xirr) if report.benchmark_xirr is not None else 'N/A'}"),
     ]
+    for i, (label, value, sub) in enumerate(kpis):
+        bx = _LM + i * box_w
+        c.setFillColor(_LIGHT_BLUE)
+        c.rect(bx, y - box_h, box_w, box_h, fill=True, stroke=False)
+        c.setStrokeColor(_BORDER)
+        c.setLineWidth(0.4)
+        c.rect(bx, y - box_h, box_w, box_h, fill=False, stroke=True)
+        c.setFillColor(_TEXT_MED)
+        c.setFont("Helvetica-Bold", 7)
+        c.drawCentredString(bx + box_w / 2, y - 12, label)
+        # Colour Gain/Loss + XIRR
+        if i == 2:
+            c.setFillColor(_pct_color(gl_frac))
+        elif i == 3 and report.xirr is not None:
+            c.setFillColor(_pct_color(report.xirr))
+        else:
+            c.setFillColor(_NAVY)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString(bx + box_w / 2, y - 28, value)
+        if sub:
+            c.setFillColor(_TEXT_MED)
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(bx + box_w / 2, y - 42, sub)
+    y -= box_h + 12
 
-    ty = y - h - 20
-    max_w = _CW - 24
+    # ---- Client / strategy details --------------------------------------
+    details = [
+        ("Client",           report.client_name),
+        ("UCC",              report.ucc),
+        ("Inception Date",   inception_dt.strftime("%d %b %Y")),
+        ("Report Date",      REPORT_DATE.strftime("%d %b %Y")),
+        ("Strategy",         "Multi-Asset MF Portfolio (Direct Plans)"),
+        ("Benchmark",        "BSE 500"),
+        ("Portfolio Manager","Credent Asset Management  |  SEBI INP000006101"),
+    ]
+    y = _draw_simple_section(c, y, "PORTFOLIO SUMMARY")
+    y = _draw_two_col_table(c, y, details, label_w=140)
+    y -= 8
 
-    for bold_title, body in paragraphs:
-        full_text = f"{bold_title} {body}"
-        c.setFont("Helvetica", 6.8)
+    # ---- Asset allocation table -----------------------------------------
+    alloc_rows = [
+        (row["Category"],
+         _fmt_inr(row["Current Value"]),
+         f"{row['Allocation %'] * 100:.2f}%")
+        for row in report.category_rows if row["Current Value"] > 0
+    ]
+    if alloc_rows:
+        alloc_rows.append(("TOTAL", _fmt_inr(report.current_value), "100.00%"))
+        y = _draw_simple_section(c, y, "ASSET ALLOCATION")
+        y = _draw_three_col_table(
+            c, y,
+            ["Category", "Current Value", "Weight"],
+            alloc_rows,
+            col_widths=[_CW * 0.5, _CW * 0.3, _CW * 0.2],
+            total_last=True,
+        )
+        y -= 8
 
-        lines: list[tuple[str, bool]] = []
-        bold_end = len(bold_title)
-        words = full_text.split()
-        line = ""
-        current_pos = 0
-        for word in words:
-            test = f"{line} {word}".strip()
-            if c.stringWidth(test, "Helvetica", 6.8) > max_w:
-                lines.append((line, current_pos <= bold_end))
-                line = word
-            else:
-                line = test
-            current_pos = len(line)
-        if line:
-            lines.append((line, False))
+    # ---- Top holdings ----------------------------------------------------
+    holding_rows = [
+        (h.scheme_name[:52],
+         _fmt_inr(h.current_value),
+         f"{(h.current_value / report.current_value * 100) if report.current_value else 0:.2f}%")
+        for h in report.top_holdings
+    ]
+    if holding_rows:
+        y = _draw_simple_section(c, y, "TOP 5 HOLDINGS")
+        y = _draw_three_col_table(
+            c, y,
+            ["Fund", "Current Value", "Weight"],
+            holding_rows,
+            col_widths=[_CW * 0.6, _CW * 0.22, _CW * 0.18],
+        )
+        y -= 8
 
-        for line_text, _ in lines:
-            if line_text.startswith(bold_title):
-                c.setFont("Helvetica-Bold", 6.8)
-                c.setFillColor(_TEXT_DARK)
-                c.drawString(_LM + 12, ty, bold_title)
-                rest = line_text[len(bold_title):]
-                bw = c.stringWidth(bold_title, "Helvetica-Bold", 6.8)
-                c.setFont("Helvetica", 6.8)
-                c.drawString(_LM + 12 + bw, ty, rest)
-            else:
-                c.setFont("Helvetica", 6.8)
-                c.setFillColor(_TEXT_DARK)
-                c.drawString(_LM + 12, ty, line_text)
-            ty -= 9.5
+    # ---- Disclaimer (short, single paragraph) ---------------------------
+    disclaimer_text = (
+        "Mutual fund investments are subject to market risks; read all scheme-related documents carefully. "
+        "Past performance is not indicative of future results. Returns are computed using the XIRR methodology. "
+        "This factsheet is for informational purposes only and does not constitute investment advice. "
+        "Credent Asset Management Services Pvt Ltd  |  SEBI PMS Reg. INP000006101  |  www.credentglobal.com"
+    )
+    if y < 100:  # room check
+        c.showPage()
+        y = _PH - 30
+    y = _draw_simple_section(c, y, "DISCLAIMER")
+    _draw_paragraph(c, _LM, y - 4, _CW, disclaimer_text, font_size=7.5, leading=10)
 
-        ty -= 8
 
-    # Footer block
-    block_h = 45
-    block_y = 50
+def _draw_simple_section(c: PdfCanvas, y: float, title: str) -> float:
+    """Small navy section-title bar."""
+    h = 16
     c.setFillColor(_NAVY)
-    c.rect(_LM, block_y, _CW, block_h, fill=True, stroke=False)
+    c.rect(_LM, y - h, _CW, h, fill=True, stroke=False)
+    c.setFillColor(_GOLD)
+    c.rect(_LM, y - h, 3, h, fill=True, stroke=False)
     c.setFillColor(_WHITE)
-    c.setFont("Helvetica-Bold", 8)
-    c.drawCentredString(_PW / 2, block_y + 32, "Credent Asset Management Services Pvt Ltd")
-    c.setFont("Helvetica", 6)
-    c.drawCentredString(_PW / 2, block_y + 21, "306, B2, Shubham Centre, Cardinal Gracious Road, Chakala, Andheri (East), Mumbai – 400099, Maharashtra")
-    c.drawCentredString(_PW / 2, block_y + 11, "PAN: AAGCB0414J   |   SEBI PMS: INP000006101   |   SEBI RIA: INA000018294   |   www.credentglobal.com")
+    c.setFont("Helvetica-Bold", 8.5)
+    c.drawString(_LM + 10, y - 11, title)
+    return y - h - 4
 
 
-def generate_client_pdf(report: ClientReport, output_path: Path) -> None:
-    c = PdfCanvas(str(output_path), pagesize=A4)
+def _draw_two_col_table(c: PdfCanvas, y: float, rows: list[tuple[str, str]], label_w: float) -> float:
+    row_h = 14
+    for i, (label, value) in enumerate(rows):
+        bg = _LIGHT_BLUE if i % 2 == 0 else _WHITE
+        c.setFillColor(bg)
+        c.rect(_LM, y - row_h, _CW, row_h, fill=True, stroke=False)
+        c.setStrokeColor(_BORDER)
+        c.setLineWidth(0.3)
+        c.rect(_LM, y - row_h, _CW, row_h, fill=False, stroke=True)
+        c.setFillColor(_TEXT_DARK)
+        c.setFont("Helvetica-Bold", 7.5)
+        c.drawString(_LM + 8, y - 10, label)
+        c.setFont("Helvetica", 7.5)
+        c.drawString(_LM + 8 + label_w, y - 10, str(value))
+        y -= row_h
+    return y
 
-    # --- Page 1 ---
-    y = _PH - 12
-    y = _draw_pdf_header(c, y, report)
-    y -= 5
-    y = _draw_pdf_about(c, y, report)
-    y -= 5
-    y = _draw_pdf_kpi(c, y, report)
-    y -= 6
-    y = _draw_pdf_section_header(c, y, "STRATEGY SNAPSHOT & PERFORMANCE", "XIRR  •  Since Inception")
-    y = _draw_pdf_strategy_tables(c, y, report)
-    y -= 6
-    y = _draw_pdf_section_header(c, y, "ASSET ALLOCATION", "Multi-asset, multi-cap diversification")
-    y = _draw_pdf_allocation(c, y, report)
-    y -= 6
-    y = _draw_pdf_section_header(c, y, "TOP 5 HOLDINGS", "By weight")
-    y = _draw_pdf_top_holdings(c, y, report)
-    _draw_pdf_footer(c, 1)
 
-    c.showPage()
+def _draw_three_col_table(
+    c: PdfCanvas,
+    y: float,
+    headers: list[str],
+    rows: list[tuple[str, str, str]],
+    col_widths: list[float],
+    total_last: bool = False,
+) -> float:
+    row_h = 15
+    x_positions = [_LM]
+    for w in col_widths[:-1]:
+        x_positions.append(x_positions[-1] + w)
+    # header
+    c.setFillColor(_DARK_NAVY)
+    c.rect(_LM, y - row_h, _CW, row_h, fill=True, stroke=False)
+    c.setFillColor(_WHITE)
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawString(x_positions[0] + 6, y - 10, headers[0])
+    c.drawRightString(x_positions[1] + col_widths[1] - 6, y - 10, headers[1])
+    c.drawRightString(x_positions[2] + col_widths[2] - 6, y - 10, headers[2])
+    y -= row_h
+    # rows
+    for i, (a, b, d) in enumerate(rows):
+        is_total = total_last and i == len(rows) - 1
+        bg = _CREAM if is_total else (_LIGHT_BLUE if i % 2 == 0 else _WHITE)
+        c.setFillColor(bg)
+        c.rect(_LM, y - row_h, _CW, row_h, fill=True, stroke=False)
+        c.setStrokeColor(_BORDER)
+        c.setLineWidth(0.3)
+        c.rect(_LM, y - row_h, _CW, row_h, fill=False, stroke=True)
+        c.setFillColor(_TEXT_DARK)
+        c.setFont("Helvetica-Bold" if is_total else "Helvetica", 7.5)
+        c.drawString(x_positions[0] + 6, y - 10, str(a))
+        c.drawRightString(x_positions[1] + col_widths[1] - 6, y - 10, str(b))
+        c.drawRightString(x_positions[2] + col_widths[2] - 6, y - 10, str(d))
+        y -= row_h
+    return y
 
-    # --- Page 2: Disclaimer ---
-    _draw_pdf_disclaimer(c)
-    _draw_pdf_footer(c, 2)
 
-    c.save()
+def _draw_paragraph(c: PdfCanvas, x: float, y: float, width: float, text: str, font_size: float = 7.5, leading: float = 10) -> float:
+    """Simple, iterative word-wrap. No recursion, no beginText."""
+    c.setFillColor(_TEXT_MED)
+    c.setFont("Helvetica", font_size)
+    words = text.split()
+    line_words: list[str] = []
+    for word in words:
+        candidate = " ".join(line_words + [word])
+        if c.stringWidth(candidate, "Helvetica", font_size) <= width - 12 or not line_words:
+            line_words.append(word)
+        else:
+            c.drawString(x + 6, y, " ".join(line_words))
+            y -= leading
+            line_words = [word]
+    if line_words:
+        c.drawString(x + 6, y, " ".join(line_words))
+        y -= leading
+    return y
 
 
 def generate_all_pdfs(reports: list[ClientReport]) -> None:
