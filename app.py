@@ -291,10 +291,13 @@ def download_client_pdf(client_id):
         import traceback
         tb = traceback.format_exc()
         print(f"=== PDF GENERATION ERROR ===\n{tb}\n===========================")
-        # Include the last frame of the traceback in the response so the
-        # error modal shows the actual failing line, not just the message.
-        last_frame = tb.strip().splitlines()[-2:] if tb else []
-        detail = ' | '.join(line.strip() for line in last_frame)
+        # Find the deepest "File ..." frame that lives in our own code so
+        # the error modal shows where the failure originated.
+        our_frames = [
+            line.strip() for line in tb.splitlines()
+            if line.lstrip().startswith('File "') and 'site-packages' not in line
+        ]
+        detail = our_frames[-1] if our_frames else ''
         return jsonify({'error': f'Error generating PDF: {str(e)}\n{detail}'}), 500
 
 
