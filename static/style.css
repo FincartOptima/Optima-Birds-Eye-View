@@ -246,6 +246,24 @@ body {
     box-shadow: 0 0 0 3px rgba(20, 54, 92, 0.12);
 }
 
+.filter-select {
+    padding: 10px 15px;
+    border: 2px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    background: var(--white);
+    color: var(--text-dark);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.filter-select:hover,
+.filter-select:focus {
+    border-color: var(--navy);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(20, 54, 92, 0.12);
+}
+
 @media (max-width: 768px) {
     .toolbar {
         flex-direction: column;

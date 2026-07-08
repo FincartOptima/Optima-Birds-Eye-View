@@ -10,6 +10,8 @@ let masterDataLoaded = false;
 let masterData = null;
 let consolidatedLoaded = false;
 let consolidatedData = null;
+let failedDataLoaded = false;
+let failedData = null;
 let hasMasterFile = false;
 let clientPieChart = null;
 let portfolioPieChart = null;
@@ -148,10 +150,13 @@ function initializeUI() {
     // Enable/disable tabs that require the trade master
     const clientBtn = document.getElementById('tabClientBtn');
     const masterBtn = document.getElementById('tabMasterBtn');
+    const failedBtn = document.getElementById('tabFailedBtn');
     clientBtn.disabled = !hasMasterFile;
     masterBtn.disabled = !hasMasterFile;
+    failedBtn.disabled = !hasMasterFile;
     clientBtn.classList.toggle('disabled', !hasMasterFile);
     masterBtn.classList.toggle('disabled', !hasMasterFile);
+    failedBtn.classList.toggle('disabled', !hasMasterFile);
 
     // Land on Client Consolidated (always available from the CSV)
     switchTab('consolidated');
@@ -177,7 +182,7 @@ function setupClientSearch() {
 // ============================================================
 
 function switchTab(tab) {
-    if ((tab === 'client' || tab === 'master') && !hasMasterFile) {
+    if ((tab === 'client' || tab === 'master' || tab === 'failed') && !hasMasterFile) {
         showError('This view needs the Trade Allocation Master file. Re-upload including the Excel file to enable it.');
         return;
     }
@@ -187,6 +192,7 @@ function switchTab(tab) {
         client:       { btn: 'tabClientBtn',       content: 'clientTabContent' },
         master:       { btn: 'tabMasterBtn',       content: 'masterTabContent' },
         consolidated: { btn: 'tabConsolidatedBtn', content: 'consolidatedTabContent' },
+        failed:       { btn: 'tabFailedBtn',       content: 'failedTabContent' },
     };
 
     for (const [key, ids] of Object.entries(tabs)) {
@@ -204,6 +210,7 @@ function switchTab(tab) {
 
     if (tab === 'master' && !masterDataLoaded) loadMasterData();
     if (tab === 'consolidated' && !consolidatedLoaded) loadConsolidated();
+    if (tab === 'failed' && !failedDataLoaded) loadFailedTransactions();
 }
 
 // ============================================================
@@ -425,6 +432,8 @@ function resetApp() {
     masterData = null;
     consolidatedLoaded = false;
     consolidatedData = null;
+    failedDataLoaded = false;
+    failedData = null;
     hasMasterFile = false;
     adjustAllocations = [];
     if (adjustPieChart) { adjustPieChart.destroy(); adjustPieChart = null; }
@@ -737,6 +746,97 @@ function toggleClientDetail(idx) {
     const open = row.style.display !== 'none';
     row.style.display = open ? 'none' : 'table-row';
     caret.textContent = open ? '▸' : '▾';
+}
+
+// ============================================================
+// Failed Transactions
+// ============================================================
+
+async function loadFailedTransactions() {
+    showLoading('Loading failed transactions...');
+    try {
+        const response = await fetch('/api/failed-transactions');
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to load failed transactions');
+        }
+        failedData = await response.json();
+        failedDataLoaded = true;
+
+        const select = document.getElementById('failedClientSelect');
+        select.innerHTML = '<option value="all">All Clients (overview)</option>' +
+            failedData.overview.map(c => `<option value="${c.ucc}">${c.client_name} (${c.ucc})</option>`).join('');
+        select.value = 'all';
+
+        renderFailedOverview();
+        hideLoading();
+    } catch (error) {
+        hideLoading();
+        showError(error.message);
+    }
+}
+
+function onFailedClientChange() {
+    const ucc = document.getElementById('failedClientSelect').value;
+    if (ucc === 'all') {
+        renderFailedOverview();
+    } else {
+        renderFailedDetail(ucc);
+    }
+}
+
+function renderFailedOverview() {
+    if (!failedData) return;
+    document.getElementById('failedTableHead').innerHTML = `
+        <tr>
+            <th>UCC</th>
+            <th>Client Name</th>
+            <th class="num">Count</th>
+        </tr>`;
+
+    if (!failedData.overview.length) {
+        document.getElementById('failedTableBody').innerHTML =
+            '<tr><td colspan="3" class="loading">No failed transactions — every trade master row has a Value.</td></tr>';
+        return;
+    }
+
+    document.getElementById('failedTableBody').innerHTML = failedData.overview.map(c => `
+        <tr>
+            <td>${c.ucc}</td>
+            <td>${c.client_name}</td>
+            <td class="num">${c.count}</td>
+        </tr>`).join('');
+}
+
+function renderFailedDetail(ucc) {
+    if (!failedData) return;
+    const rows = failedData.by_client[ucc] || [];
+
+    document.getElementById('failedTableHead').innerHTML = `
+        <tr>
+            <th>UCC</th>
+            <th>Client Name</th>
+            <th>Value Date</th>
+            <th>Scheme Name</th>
+            <th class="num">Amount/Units</th>
+            <th>Reason</th>
+        </tr>`;
+
+    if (!rows.length) {
+        document.getElementById('failedTableBody').innerHTML =
+            '<tr><td colspan="6" class="loading">No failed transactions for this client.</td></tr>';
+        return;
+    }
+
+    document.getElementById('failedTableBody').innerHTML = rows.map(r => `
+        <tr>
+            <td>${r.ucc}</td>
+            <td>${r.client_name}</td>
+            <td>${r.value_date || '—'}</td>
+            <td>${r.scheme_name}</td>
+            <td class="num">${r.amount_units !== null ? formatCurrency(r.amount_units) : '—'}</td>
+            <td>${r.reason || '—'}</td>
+        </tr>`).join('');
 }
 
 // ============================================================

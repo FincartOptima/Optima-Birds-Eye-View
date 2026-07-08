@@ -97,6 +97,7 @@
                 <button class="tab-btn active" id="tabClientBtn" onclick="switchTab('client')">Client View</button>
                 <button class="tab-btn" id="tabMasterBtn" onclick="switchTab('master')">Master Dashboard</button>
                 <button class="tab-btn" id="tabConsolidatedBtn" onclick="switchTab('consolidated')">Client Consolidated</button>
+                <button class="tab-btn" id="tabFailedBtn" onclick="switchTab('failed')">Failed Transactions</button>
             </div>
 
             <!-- CLIENT TAB CONTENT -->
@@ -330,6 +331,36 @@
 
                 </div>
             </div><!-- /#consolidatedTabContent -->
+
+            <!-- FAILED TRANSACTIONS TAB CONTENT -->
+            <div id="failedTabContent" style="display:none;">
+                <div class="master-content">
+                    <section class="section">
+                        <h3 class="section-title">Failed Transactions</h3>
+                        <p class="section-subtitle">Trade master rows with a blank Value column (column K) &mdash; excluded from every other calculation on this site</p>
+                        <div class="search-box" style="max-width:360px;margin-bottom:18px;">
+                            <label for="failedClientSelect">View:</label>
+                            <select id="failedClientSelect" class="filter-select" onchange="onFailedClientChange()">
+                                <option value="all">All Clients (overview)</option>
+                            </select>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="data-table" id="failedTable">
+                                <thead id="failedTableHead">
+                                    <tr>
+                                        <th>UCC</th>
+                                        <th>Client Name</th>
+                                        <th class="num">Count</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="failedTableBody">
+                                    <tr><td colspan="3" class="loading">Loading failed transactions...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div><!-- /#failedTabContent -->
 
         </div><!-- /#mainSection -->
 

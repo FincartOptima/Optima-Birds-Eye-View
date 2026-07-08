@@ -66,6 +66,20 @@ class Transaction:
 
 
 @dataclass
+class FailedTransaction:
+    """A trade-master row whose Value column (fixed position, column K) was
+    blank. Excluded from every holdings/XIRR/dashboard calculation."""
+    source_sheet: str
+    source_row: int
+    ucc: str
+    client_name: str
+    scheme_name: str
+    amount_units: float | None
+    value_date: datetime | str | None
+    reason: str
+
+
+@dataclass
 class Holding:
     isin: str
     scheme_name: str
@@ -214,8 +228,25 @@ def read_master(workbook) -> dict[str, dict[str, Any]]:
     return master
 
 
-def read_transactions(workbook, master: dict[str, dict[str, Any]]) -> list[Transaction]:
+# Fixed 0-based column positions used only for the failed-transaction check
+# and its Reason text. These are literal spreadsheet positions (K, C, Z, V),
+# not header-name lookups, since the trade master's header text/order drifts
+# from sheet to sheet but the failed-transaction convention is positional.
+_VALUE_COL_IDX = 10   # column K
+_REASON_COL_IDX_C = 2   # column C
+_REASON_COL_IDX_Z = 25  # column Z
+_REASON_COL_IDX_V = 21  # column V
+
+
+def _cell(row: list[Any], idx: int) -> Any:
+    return row[idx] if idx < len(row) else None
+
+
+def read_transactions(
+    workbook, master: dict[str, dict[str, Any]]
+) -> tuple[list[Transaction], list[FailedTransaction]]:
     transactions: list[Transaction] = []
+    failed_transactions: list[FailedTransaction] = []
     for sheet in workbook.worksheets:
         statement_date = parse_sheet_date(sheet.title)
         if statement_date is None:
@@ -245,6 +276,28 @@ def read_transactions(workbook, master: dict[str, dict[str, Any]]) -> list[Trans
                 continue
             if ucc in master:
                 client_name = master[ucc]["client_name"]
+
+            value_cell = _cell(row, _VALUE_COL_IDX)
+            if value_cell is None or (isinstance(value_cell, str) and not value_cell.strip()):
+                reason_parts = [
+                    clean_text(_cell(row, _REASON_COL_IDX_C)),
+                    clean_text(_cell(row, _REASON_COL_IDX_Z)),
+                    clean_text(_cell(row, _REASON_COL_IDX_V)),
+                ]
+                failed_transactions.append(
+                    FailedTransaction(
+                        source_sheet=sheet.title,
+                        source_row=row_number,
+                        ucc=ucc,
+                        client_name=client_name,
+                        scheme_name=scheme_name,
+                        amount_units=amount,
+                        value_date=row_value(row, headers, "Value Date"),
+                        reason=" ".join(part for part in reason_parts if part),
+                    )
+                )
+                continue
+
             transactions.append(
                 Transaction(
                     source_sheet=sheet.title,
@@ -262,7 +315,7 @@ def read_transactions(workbook, master: dict[str, dict[str, Any]]) -> list[Trans
                     allocation_date=row_value(row, headers, "Child Allocation", "Child Allocation ", "Redemption"),
                 )
             )
-    return transactions
+    return transactions, failed_transactions
 
 
 def read_current_navs(file_path: Path) -> tuple[dict[str, float], dict[str, str]]:

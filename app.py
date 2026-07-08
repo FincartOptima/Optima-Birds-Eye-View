@@ -31,6 +31,16 @@ reports_cache = {}
 current_file = None
 
 
+def _format_cell_date(value):
+    """Format a raw trade-master cell value (datetime, string, or blank) for
+    display without relying on Flask's default datetime JSON encoding."""
+    if isinstance(value, datetime):
+        return value.strftime('%d %b %Y')
+    if value is None:
+        return ''
+    return str(value).strip()
+
+
 def _build_all_holdings(report):
     rows = [
         {
@@ -134,6 +144,7 @@ def upload_file():
         reports_cache.pop('csv_path', None)
         reports_cache['reports'] = []
         reports_cache['bse_prices'] = []
+        reports_cache['failed_transactions'] = []
 
         # ---- Resolve the holdings CSV source ----
         snap_path = None
@@ -174,7 +185,8 @@ def upload_file():
             master = read_master(source_workbook)
             if not master:
                 return jsonify({'error': 'No valid client data found in the trade master file'}), 400
-            transactions = read_transactions(source_workbook, master)
+            transactions, failed_transactions = read_transactions(source_workbook, master)
+            reports_cache['failed_transactions'] = failed_transactions
 
             # BSE 500 benchmark: live from the Google Sheet's 'Benchmark' column
             try:
@@ -403,6 +415,41 @@ def get_master():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/failed-transactions')
+def get_failed_transactions():
+    """Return trade-master rows with a blank Value column (column K), grouped
+    by client. These are excluded from every other calculation."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+
+    failed = reports_cache.get('failed_transactions', [])
+
+    by_client = defaultdict(list)
+    for t in failed:
+        by_client[t.ucc].append({
+            'ucc': t.ucc,
+            'client_name': t.client_name,
+            'value_date': _format_cell_date(t.value_date),
+            'scheme_name': t.scheme_name,
+            'amount_units': t.amount_units,
+            'reason': t.reason,
+        })
+
+    overview = sorted(
+        (
+            {'ucc': ucc, 'client_name': rows[0]['client_name'], 'count': len(rows)}
+            for ucc, rows in by_client.items()
+        ),
+        key=lambda r: r['client_name'].lower(),
+    )
+
+    return jsonify({
+        'overview': overview,
+        'by_client': by_client,
+        'total_count': len(failed),
+    })
 
 
 @app.route('/api/consolidated')
