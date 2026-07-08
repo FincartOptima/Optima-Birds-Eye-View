@@ -83,9 +83,11 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
 async function processUpload() {
     const csvFile = document.getElementById('csvInput').files[0];
     const xlsxFile = document.getElementById('fileInput').files[0];
+    const navUrl = document.getElementById('navSheetUrl').value.trim();
+    const masterUrl = document.getElementById('masterSheetUrl').value.trim();
 
-    if (!csvFile && !xlsxFile) {
-        showError('Please choose at least the Client Holdings CSV file.');
+    if (!csvFile && !xlsxFile && !navUrl && !masterUrl) {
+        showError('Please choose at least one file or paste a Google Sheet URL.');
         return;
     }
 
@@ -94,6 +96,12 @@ async function processUpload() {
     const formData = new FormData();
     if (xlsxFile) formData.append('file', xlsxFile);
     if (csvFile)  formData.append('nav_file', csvFile);
+    if (navUrl)   formData.append('nav_sheet_url', navUrl);
+    if (masterUrl) formData.append('master_sheet_url', masterUrl);
+
+    // Persist URLs in localStorage for next session
+    localStorage.setItem('bev_nav_sheet_url', navUrl);
+    localStorage.setItem('bev_master_sheet_url', masterUrl);
 
     try {
         const response = await fetch('/api/upload', { method: 'POST', body: formData });
@@ -101,7 +109,7 @@ async function processUpload() {
         if (!response.ok) throw new Error(data.error || 'Upload failed');
 
         clientsList = data.clients || [];
-        hasMasterFile = !!xlsxFile && clientsList.length > 0;
+        hasMasterFile = (!!xlsxFile || !!masterUrl) && clientsList.length > 0;
         document.getElementById('fileInfo').textContent = `✓ Loaded ${data.total_clients || 0} clients`;
 
         initializeUI();
@@ -899,4 +907,9 @@ function updateAdjustChart() {
 
 window.addEventListener('DOMContentLoaded', () => {
     console.log('Client Factsheet Viewer loaded');
+
+    const savedNav = localStorage.getItem('bev_nav_sheet_url');
+    const savedMaster = localStorage.getItem('bev_master_sheet_url');
+    if (savedNav) document.getElementById('navSheetUrl').value = savedNav;
+    if (savedMaster) document.getElementById('masterSheetUrl').value = savedMaster;
 });

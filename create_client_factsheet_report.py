@@ -16,24 +16,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from openpyxl import Workbook, load_workbook
-from openpyxl.chart import LineChart, Reference
-from openpyxl.chart.label import DataLabelList
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
+from openpyxl import load_workbook
 
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas as PdfCanvas
 from reportlab.lib.colors import HexColor
-from reportlab.lib.utils import ImageReader
-
-
-BASE_DIR = Path(__file__).resolve().parent
-TRANSACTION_FILE = BASE_DIR / "Trade Allocation_Master.xlsx"
-BSE_500_FILE = BASE_DIR / "BSE_DLY_BSE500, 1D (8).csv"
-OPTIONAL_CURRENT_NAV_FILE = BASE_DIR / "Current_NAVs.xlsx"
-OUTPUT_FILE = BASE_DIR / "Client_Factsheet_Report.xlsx"
-PDF_OUTPUT_DIR = BASE_DIR / "Client_Factsheets"
 
 REPORT_DATE = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -181,20 +168,6 @@ def row_value(row: list[Any], headers: list[Any], *aliases: str) -> Any:
     return None
 
 
-def safe_sheet_name(name: str, used_names: set[str]) -> str:
-    cleaned = re.sub(r"[\[\]\:\*\?\/\\]", " ", name).strip()
-    cleaned = re.sub(r"\s+", " ", cleaned) or "Client"
-    base = cleaned[:31]
-    candidate = base
-    suffix = 2
-    while candidate in used_names:
-        suffix_text = f" {suffix}"
-        candidate = f"{base[:31 - len(suffix_text)]}{suffix_text}"
-        suffix += 1
-    used_names.add(candidate)
-    return candidate
-
-
 def infer_category(isin: str, scheme_name: str) -> str:
     if isin in CATEGORY_BY_ISIN:
         return CATEGORY_BY_ISIN[isin]
@@ -290,38 +263,6 @@ def read_transactions(workbook, master: dict[str, dict[str, Any]]) -> list[Trans
                 )
             )
     return transactions
-
-
-def read_bse_prices(file_path: Path) -> list[tuple[datetime, float]]:
-    if file_path.suffix.lower() == ".csv":
-        return _read_bse_csv(file_path)
-    return _read_bse_xlsx(file_path)
-
-
-def _read_bse_csv(file_path: Path) -> list[tuple[datetime, float]]:
-    prices: list[tuple[datetime, float]] = []
-    with open(file_path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            date_val = as_datetime(row.get("time", ""))
-            close = to_number(row.get("close", ""))
-            if date_val and close:
-                prices.append((date_val, close))
-    prices.sort(key=lambda x: x[0])
-    return prices
-
-
-def _read_bse_xlsx(file_path: Path) -> list[tuple[datetime, float]]:
-    workbook = load_workbook(file_path, data_only=True, read_only=True)
-    sheet = workbook.worksheets[0]
-    prices: list[tuple[datetime, float]] = []
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        date_value = as_datetime(row[0])
-        price = to_number(row[1])
-        if date_value and price:
-            prices.append((date_value, price))
-    prices.sort(key=lambda item: item[0])
-    return prices
 
 
 def read_current_navs(file_path: Path) -> tuple[dict[str, float], dict[str, str]]:
@@ -678,188 +619,6 @@ def build_client_reports(
     return reports
 
 
-# ---------------------------------------------------------------------------
-# Excel output (unchanged)
-# ---------------------------------------------------------------------------
-
-def style_range_title(cell) -> None:
-    cell.font = Font(bold=True, color="FFFFFF", size=11)
-    cell.fill = PatternFill("solid", fgColor="1F4E78")
-    cell.alignment = Alignment(horizontal="center", vertical="center")
-
-
-def set_money(cell) -> None:
-    cell.number_format = '#,##0.00'
-
-
-def set_percent(cell) -> None:
-    cell.number_format = '0.00%'
-
-
-def write_table(sheet, start_row: int, start_col: int, headers: list[str], rows: list[list[Any]]) -> int:
-    thin = Side(style="thin", color="D9E2F3")
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    for offset, header in enumerate(headers):
-        cell = sheet.cell(start_row, start_col + offset, header)
-        style_range_title(cell)
-        cell.border = border
-    for row_offset, row_values in enumerate(rows, start=1):
-        for col_offset, value in enumerate(row_values):
-            cell = sheet.cell(start_row + row_offset, start_col + col_offset, value)
-            cell.border = border
-            cell.alignment = Alignment(vertical="top", wrap_text=True)
-    return start_row + len(rows)
-
-
-def write_client_sheet(workbook: Workbook, report: ClientReport, used_names: set[str]) -> None:
-    sheet = workbook.create_sheet(safe_sheet_name(report.client_name, used_names))
-    sheet.sheet_view.showGridLines = False
-    for col in range(1, 13):
-        sheet.column_dimensions[get_column_letter(col)].width = 14
-    sheet.column_dimensions["A"].width = 24
-    sheet.column_dimensions["B"].width = 18
-    sheet.column_dimensions["C"].width = 18
-    sheet.column_dimensions["D"].width = 18
-    sheet.column_dimensions["E"].width = 18
-    sheet.column_dimensions["G"].width = 24
-    sheet.column_dimensions["H"].width = 18
-    sheet.column_dimensions["I"].width = 18
-    sheet.column_dimensions["J"].width = 18
-    sheet.column_dimensions["K"].width = 18
-    sheet.merge_cells("A1:K1")
-    sheet["A1"] = "Client Portfolio Factsheet"
-    sheet["A1"].font = Font(bold=True, size=18, color="1F4E78")
-    sheet["A1"].alignment = Alignment(horizontal="center")
-    sheet["A2"] = "Client"
-    sheet["B2"] = report.client_name
-    sheet["D2"] = "UCC"
-    sheet["E2"] = report.ucc
-    sheet["G2"] = "Report Date"
-    sheet["H2"] = REPORT_DATE
-    sheet["H2"].number_format = "dd-mmm-yyyy"
-    for cell_ref in ["A2", "D2", "G2"]:
-        sheet[cell_ref].font = Font(bold=True)
-    snapshot_headers = ["Metric", "Value", "Metric", "Value"]
-    snapshot_rows = [
-        ["Cost Value", report.cost_value, "Current Value", report.current_value],
-        ["Unrealized P/L", report.unrealized_pl, "Realized P/L", report.realized_pl],
-        ["Total P/L", report.total_pl, "Portfolio XIRR", report.xirr],
-        ["BSE 500 Value", report.benchmark_current_value, "BSE 500 XIRR", report.benchmark_xirr],
-    ]
-    write_table(sheet, 4, 1, snapshot_headers, snapshot_rows)
-    for row in range(5, 9):
-        set_money(sheet.cell(row, 2))
-        set_money(sheet.cell(row, 4))
-    set_percent(sheet["D7"])
-    set_percent(sheet["D8"])
-    category_headers = ["Category", "Cost Value", "Current Value", "Allocation %", "Unrealized P/L", "Realized P/L", "Total P/L"]
-    category_rows = [
-        [r["Category"], r["Cost Value"], r["Current Value"], r["Allocation %"], r["Unrealized P/L"], r["Realized P/L"], r["Total P/L"]]
-        for r in report.category_rows
-    ]
-    write_table(sheet, 10, 1, category_headers, category_rows)
-    for row in range(11, 11 + len(category_rows)):
-        for col in [2, 3, 5, 6, 7]:
-            set_money(sheet.cell(row, col))
-        set_percent(sheet.cell(row, 4))
-    holding_headers = ["Fund", "Category", "ISIN", "Units", "Cost Value", "Current NAV", "Current Value", "Allocation %", "Unrealized P/L", "Realized P/L", "Total P/L"]
-    holding_rows = []
-    for holding in report.holdings:
-        holding_rows.append([
-            holding.scheme_name, holding.category, holding.isin, holding.units,
-            holding.cost_value, holding.current_nav, holding.current_value,
-            holding.current_value / report.current_value if report.current_value else 0.0,
-            holding.unrealized_pl, holding.realized_pl, holding.total_pl,
-        ])
-    holdings_end = write_table(sheet, 19, 1, holding_headers, holding_rows)
-    for row in range(20, holdings_end + 1):
-        for col in [4, 5, 6, 7, 9, 10, 11]:
-            set_money(sheet.cell(row, col))
-        set_percent(sheet.cell(row, 8))
-    top_start = holdings_end + 3
-    sheet.merge_cells(start_row=top_start, start_column=1, end_row=top_start, end_column=6)
-    sheet.cell(top_start, 1, "Top 5 Holdings")
-    style_range_title(sheet.cell(top_start, 1))
-    top_headers = ["Rank", "Fund", "Category", "Current Value", "Allocation %", "Total P/L"]
-    top_rows = [
-        [rank, holding.scheme_name, holding.category, holding.current_value,
-         holding.current_value / report.current_value if report.current_value else 0.0, holding.total_pl]
-        for rank, holding in enumerate(report.top_holdings, start=1)
-    ]
-    write_table(sheet, top_start + 1, 1, top_headers, top_rows)
-    for row in range(top_start + 2, top_start + 2 + len(top_rows)):
-        set_money(sheet.cell(row, 4))
-        set_percent(sheet.cell(row, 5))
-        set_money(sheet.cell(row, 6))
-    perf_start = top_start + 10
-    perf_headers = ["Date", "Client Value", "BSE 500 Benchmark Value"]
-    perf_rows = [[date, client_value, benchmark_value] for date, client_value, benchmark_value in report.performance_rows]
-    write_table(sheet, perf_start, 1, perf_headers, perf_rows)
-    for row in range(perf_start + 1, perf_start + 1 + len(perf_rows)):
-        sheet.cell(row, 1).number_format = "dd-mmm-yyyy"
-        set_money(sheet.cell(row, 2))
-        set_money(sheet.cell(row, 3))
-    if len(perf_rows) >= 2:
-        chart = LineChart()
-        chart.title = "Client vs BSE 500 Performance"
-        chart.y_axis.title = "Value"
-        chart.x_axis.title = "Date"
-        data = Reference(sheet, min_col=2, max_col=3, min_row=perf_start, max_row=perf_start + len(perf_rows))
-        categories = Reference(sheet, min_col=1, min_row=perf_start + 1, max_row=perf_start + len(perf_rows))
-        chart.add_data(data, titles_from_data=True)
-        chart.set_categories(categories)
-        chart.height = 9
-        chart.width = 22
-        chart.dataLabels = DataLabelList()
-        chart.dataLabels.showVal = False
-        sheet.add_chart(chart, f"G{perf_start}")
-
-
-def write_summary_sheet(workbook: Workbook, reports: list[ClientReport]) -> None:
-    sheet = workbook.active
-    sheet.title = "Summary"
-    sheet.sheet_view.showGridLines = False
-    sheet["A1"] = "Client Factsheet Summary"
-    sheet["A1"].font = Font(bold=True, size=16, color="1F4E78")
-    headers = ["Client", "UCC", "Transactions", "Cost Value", "Current Value", "Unrealized P/L", "Realized P/L", "Total P/L", "Portfolio XIRR", "BSE 500 XIRR"]
-    rows = [
-        [report.client_name, report.ucc, len(report.transactions), report.cost_value, report.current_value,
-         report.unrealized_pl, report.realized_pl, report.total_pl, report.xirr, report.benchmark_xirr]
-        for report in reports
-    ]
-    write_table(sheet, 3, 1, headers, rows)
-    for row in range(4, 4 + len(rows)):
-        for col in [4, 5, 6, 7, 8]:
-            set_money(sheet.cell(row, col))
-        set_percent(sheet.cell(row, 9))
-        set_percent(sheet.cell(row, 10))
-    widths = [42, 12, 14, 16, 16, 16, 16, 16, 14, 14]
-    for col_num, width in enumerate(widths, start=1):
-        sheet.column_dimensions[get_column_letter(col_num)].width = width
-
-
-def write_notes_sheet(workbook: Workbook, used_names: set[str], current_navs_present: bool) -> None:
-    sheet = workbook.create_sheet(safe_sheet_name("Notes", used_names))
-    sheet.sheet_view.showGridLines = False
-    notes = [
-        "This workbook is generated from Trade Allocation_Master.xlsx and BSE_DLY_BSE500, 1D (8).csv.",
-        "Fund allocation is based on current value.",
-        "Cost value is the remaining cost basis after redemptions. Redemption P/L uses average cost.",
-        "Only Cash is estimated as Master Initial Investment minus net fund investment, floored at zero.",
-        "Portfolio XIRR uses transaction cash flows and final current value on the report date.",
-        "BSE 500 XIRR uses the same subscription/redemption cash-flow dates invested in BSE 500.",
-        "Client performance line uses available transaction NAV observations and current NAV.",
-    ]
-    if current_navs_present:
-        notes.append("Current NAV was read from Current_NAVs.xlsx where ISINs matched.")
-    else:
-        notes.append("Current_NAVs.xlsx was not found, so current NAV is estimated from latest observed transaction NAV.")
-    for row, note in enumerate(notes, start=1):
-        sheet.cell(row, 1, note)
-        sheet.cell(row, 1).alignment = Alignment(wrap_text=True, vertical="top")
-    sheet.column_dimensions["A"].width = 110
-
-
 # =====================================================================
 # PDF FACTSHEET GENERATION
 # =====================================================================
@@ -1145,52 +904,3 @@ def _draw_paragraph(c: PdfCanvas, x: float, y: float, width: float, text: str, f
     return y
 
 
-def generate_all_pdfs(reports: list[ClientReport]) -> None:
-    PDF_OUTPUT_DIR.mkdir(exist_ok=True)
-    count = 0
-    for report in reports:
-        if report.cost_value <= 0:
-            continue
-        safe_name = re.sub(r"[^\w\s\-]", "", report.client_name).strip()
-        safe_name = re.sub(r"\s+", "_", safe_name)
-        pdf_path = PDF_OUTPUT_DIR / f"{safe_name}_Factsheet_{REPORT_DATE.strftime('%b_%Y')}.pdf"
-        generate_client_pdf(report, pdf_path)
-        count += 1
-        print(f"  PDF: {pdf_path.name}")
-    print(f"Generated {count} PDF factsheets in {PDF_OUTPUT_DIR}")
-
-
-# =====================================================================
-# MAIN
-# =====================================================================
-
-def build_report() -> None:
-    source_workbook = load_workbook(TRANSACTION_FILE, data_only=True)
-    master = read_master(source_workbook)
-    transactions = read_transactions(source_workbook, master)
-    bse_prices = read_bse_prices(BSE_500_FILE)
-    current_navs, category_overrides = read_current_navs(OPTIONAL_CURRENT_NAV_FILE)
-
-    reports = build_client_reports(master, transactions, bse_prices, current_navs, category_overrides)
-
-    workbook = Workbook()
-    write_summary_sheet(workbook, reports)
-    used_names = {"Summary"}
-    for report in reports:
-        write_client_sheet(workbook, report, used_names)
-    write_notes_sheet(workbook, used_names, bool(current_navs))
-    workbook.save(OUTPUT_FILE)
-
-    print(f"Created Excel: {OUTPUT_FILE}")
-    print(f"Clients: {len(reports)}")
-    print(f"Transactions used: {len(transactions)}")
-    print(f"BSE 500 source: {BSE_500_FILE.name}")
-    print(f"Report date: {REPORT_DATE.strftime('%d %B %Y')}")
-    print(f"Current NAV source: {'Current_NAVs.xlsx' if current_navs else 'latest observed transaction NAV'}")
-
-    print("\nGenerating PDF factsheets...")
-    generate_all_pdfs(reports)
-
-
-if __name__ == "__main__":
-    build_report()

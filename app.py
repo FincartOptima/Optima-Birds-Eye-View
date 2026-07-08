@@ -2,17 +2,21 @@ from flask import Flask, render_template, request, jsonify, send_file
 from werkzeug.utils import secure_filename
 import os
 import io
+import re
 import tempfile
+import urllib.request
+import urllib.error
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 
 from openpyxl import load_workbook
 from create_client_factsheet_report import (
-    read_master, read_transactions, read_bse_prices,
+    read_master, read_transactions,
     read_current_navs, read_client_file_csv, build_client_reports, generate_client_pdf,
     REPORT_DATE, CATEGORY_ORDER,
 )
+import gsheet_data
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB max file size
@@ -68,25 +72,62 @@ def index():
     return render_template('index.html')
 
 
+def _fetch_gsheet(url, fmt='csv'):
+    """Download a Google Sheet as CSV or XLSX bytes.
+
+    The sheet must be shared with 'Anyone with the link'.
+    """
+    m = re.search(r'/spreadsheets/d/([a-zA-Z0-9_-]+)', url)
+    if m:
+        sheet_id = m.group(1)
+    elif re.match(r'^[a-zA-Z0-9_-]{20,}$', url.strip()):
+        sheet_id = url.strip()
+    else:
+        raise ValueError(
+            'Could not find a Google Sheet ID. Paste the full URL '
+            '(e.g. https://docs.google.com/spreadsheets/d/…/edit)')
+
+    export_url = f'https://docs.google.com/spreadsheets/d/{sheet_id}/export?format={fmt}'
+    req = urllib.request.Request(export_url, headers={'User-Agent': 'BirdsEyeView/1.0'})
+    try:
+        resp = urllib.request.urlopen(req, timeout=60)
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            raise ValueError('Access denied — make sure the sheet is shared with "Anyone with the link"')
+        raise ValueError(f'Google Sheets returned HTTP {e.code}')
+
+    data = resp.read()
+    if fmt == 'csv' and data[:100].lower().startswith((b'<!doctype', b'<html')):
+        raise ValueError(
+            'Got an HTML page instead of data — the sheet is probably not shared publicly. '
+            'Set sharing to "Anyone with the link".')
+    return data
+
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     """Handle upload of the client holdings CSV and/or the trade master xlsx.
 
+    Each source can come from a file upload OR a Google Sheet URL.
     The CSV alone is enough for the Client Consolidated tab. The xlsx (trade
     master) additionally enables the per-client factsheet (XIRR) and the
-    Master Dashboard. At least one file must be provided.
+    Master Dashboard. At least one source must be provided.
     """
     xlsx = request.files.get('file')
     snap = request.files.get('nav_file')
+    nav_url = request.form.get('nav_sheet_url', '').strip()
+    master_url = request.form.get('master_sheet_url', '').strip()
+
     has_xlsx = bool(xlsx and xlsx.filename)
     has_snap = bool(snap and snap.filename)
 
-    if not has_xlsx and not has_snap:
-        return jsonify({'error': 'No file provided. Upload the client holdings CSV (and optionally the trade master).'}), 400
     if has_xlsx and not xlsx.filename.lower().endswith(('.xlsx', '.xls')):
         return jsonify({'error': 'The trade master must be an Excel file (.xlsx, .xls)'}), 400
     if has_snap and not snap.filename.lower().endswith('.csv'):
         return jsonify({'error': 'The client holdings snapshot must be a .csv file'}), 400
+
+    if not has_xlsx and not has_snap and not nav_url and not master_url:
+        return jsonify({'error': 'No file or Google Sheet URL provided.'}), 400
 
     try:
         # Reset prior state
@@ -94,41 +135,79 @@ def upload_file():
         reports_cache['reports'] = []
         reports_cache['bse_prices'] = []
 
-        # Save and parse the holdings snapshot (current NAVs + consolidated view)
-        current_navs, category_overrides = {}, {}
+        # ---- Resolve the holdings CSV source ----
+        snap_path = None
         if has_snap:
             snap_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(snap.filename))
             snap.save(snap_path)
+        elif nav_url:
+            print(f"Fetching holdings CSV from Google Sheet: {nav_url}")
+            csv_bytes = _fetch_gsheet(nav_url, 'csv')
+            snap_path = os.path.join(app.config['UPLOAD_FOLDER'], 'gsheet_holdings.csv')
+            with open(snap_path, 'wb') as f:
+                f.write(csv_bytes)
+            print(f"Holdings CSV fetched ({len(csv_bytes):,} bytes)")
+
+        current_navs, category_overrides = {}, {}
+        if snap_path:
             reports_cache['csv_path'] = snap_path
             current_navs, category_overrides = read_client_file_csv(Path(snap_path))
             print(f"Snapshot NAVs: {len(current_navs)}")
 
-        client_list = []
+        # ---- Resolve the trade master XLSX source ----
+        xlsx_path = None
         if has_xlsx:
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(xlsx.filename))
-            xlsx.save(filepath)
-            print(f"Processing trade master: {filepath}")
-            source_workbook = load_workbook(filepath, data_only=True)
+            xlsx_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(xlsx.filename))
+            xlsx.save(xlsx_path)
+        elif master_url:
+            print(f"Fetching trade master XLSX from Google Sheet: {master_url}")
+            xlsx_bytes = _fetch_gsheet(master_url, 'xlsx')
+            xlsx_path = os.path.join(app.config['UPLOAD_FOLDER'], 'gsheet_master.xlsx')
+            with open(xlsx_path, 'wb') as f:
+                f.write(xlsx_bytes)
+            print(f"Trade master fetched ({len(xlsx_bytes):,} bytes)")
+
+        client_list = []
+        if xlsx_path:
+            print(f"Processing trade master: {xlsx_path}")
+            source_workbook = load_workbook(xlsx_path, data_only=True)
             master = read_master(source_workbook)
             if not master:
                 return jsonify({'error': 'No valid client data found in the trade master file'}), 400
             transactions = read_transactions(source_workbook, master)
 
-            bse_file = Path(__file__).resolve().parent / "BSE_DLY_BSE500, 1D (8).csv"
-            if not bse_file.exists():
-                return jsonify({'error': f'BSE 500 data file not found: {bse_file}'}), 400
-            bse_prices = read_bse_prices(bse_file)
+            # BSE 500 benchmark: live from the Google Sheet's 'Benchmark' column
+            try:
+                bse_prices = gsheet_data.get_live_bse_prices()
+                print(f"BSE 500 benchmark: {len(bse_prices)} points from live Google Sheet")
+            except Exception as e:
+                return jsonify({'error': f'Could not fetch the BSE 500 benchmark from Google Sheets: {e}'}), 400
 
-            # Fall back to bundled Current_NAVs.xlsx only if no snapshot NAVs
-            if not current_navs:
-                current_navs, category_overrides = read_current_navs(Path(__file__).resolve().parent / "Current_NAVs.xlsx")
+            # Current NAV precedence (highest wins): custodian snapshot Unit Price
+            # > live Google Sheets > local Current_NAVs.xlsx > latest txn NAV (inside build_client_reports).
+            snapshot_navs, snapshot_categories = current_navs, category_overrides
+            try:
+                live_navs, gsheet_warnings = gsheet_data.get_live_current_navs()
+            except Exception as e:
+                live_navs, gsheet_warnings = {}, [str(e)]
+            local_navs, local_categories = read_current_navs(Path(__file__).resolve().parent / "Current_NAVs.xlsx")
+
+            current_navs = {**local_navs, **live_navs, **snapshot_navs}
+            category_overrides = {
+                **local_categories,
+                **gsheet_data.get_category_overrides(),
+                **snapshot_categories,
+            }
+            if live_navs:
+                print(f"Live Google Sheet NAVs: {len(live_navs)}")
+            for w in gsheet_warnings:
+                print(f"[gsheet] {w}")
 
             reports = build_client_reports(master, transactions, bse_prices, current_navs, category_overrides)
             reports_cache['reports'] = reports
             reports_cache['bse_prices'] = bse_prices
-            reports_cache['file_path'] = filepath
+            reports_cache['file_path'] = xlsx_path
 
-            # Portfolio-wide category allocation (used by client pie chart comparison)
             valid_reports = [r for r in reports if r.cost_value > 0]
             total_portfolio_value = sum(r.current_value for r in valid_reports)
             portfolio_cat_values = defaultdict(float)
@@ -147,16 +226,20 @@ def upload_file():
                 for i, r in enumerate(reports) if r.cost_value > 0
             ]
 
+        has_any_master = bool(xlsx_path)
+        has_any_snap = bool(snap_path)
         reports_cache['upload_time'] = datetime.now().isoformat()
         return jsonify({
             'success': True,
             'clients': client_list,
             'total_clients': len(client_list),
-            'has_master': has_xlsx,
-            'has_snapshot': has_snap,
+            'has_master': has_any_master,
+            'has_snapshot': has_any_snap,
             'message': f'Loaded {len(client_list)} clients successfully'
         })
 
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         print(f"Error processing file: {str(e)}")
         import traceback

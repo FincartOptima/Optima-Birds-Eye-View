@@ -37,6 +37,12 @@
                         <button class="btn btn-secondary" onclick="document.getElementById('csvInput').click()">Choose CSV</button>
                         <span class="picked" id="csvPicked">No file</span>
                     </div>
+                    <div class="gsheet-row">
+                        <span class="gsheet-or">or Google Sheet URL</span>
+                        <input type="text" id="navSheetUrl" class="gsheet-url-input"
+                               placeholder="https://docs.google.com/spreadsheets/d/…">
+                    </div>
+
                     <div class="upload-row">
                         <div class="upload-row-label">
                             <strong>Trade Allocation Master</strong> <span class="opt">optional</span>
@@ -45,6 +51,11 @@
                         <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;">
                         <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">Choose Excel</button>
                         <span class="picked" id="xlsxPicked">No file</span>
+                    </div>
+                    <div class="gsheet-row">
+                        <span class="gsheet-or">or Google Sheet URL</span>
+                        <input type="text" id="masterSheetUrl" class="gsheet-url-input"
+                               placeholder="https://docs.google.com/spreadsheets/d/…">
                     </div>
                 </div>
 

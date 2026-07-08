@@ -778,6 +778,36 @@ body {
     font-size: 0.82rem; color: var(--text-med); max-width: 150px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.gsheet-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 620px;
+    margin: -6px auto 0;
+    padding: 0 18px 10px;
+}
+.gsheet-or {
+    font-size: 0.78rem;
+    color: var(--text-light);
+    white-space: nowrap;
+    min-width: 130px;
+}
+.gsheet-url-input {
+    flex: 1;
+    padding: 7px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    color: var(--text-dark);
+    background: #fff;
+    transition: border-color 0.2s;
+}
+.gsheet-url-input:focus {
+    outline: none;
+    border-color: var(--navy);
+    box-shadow: 0 0 0 3px rgba(20,54,92,.12);
+}
+.gsheet-url-input::placeholder { color: #bbb; }
 #loadBtn { margin-top: 8px; }
 
 /* ============================================================

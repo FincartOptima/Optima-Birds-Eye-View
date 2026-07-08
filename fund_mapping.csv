@@ -1,0 +1,33 @@
+isin,sheet_fund_name,source,category
+# HOW TO ADD A NEW FUND
+#  1. Add the fund's NAV history as a new column to the right Google Sheet
+#     (Cash / Gold / Equity / Debt) with the exact fund name as the column header.
+#  2. Add one row below with:
+#       isin             = the fund's ISIN, exactly as it appears in the trade
+#                           master / custodian holdings CSV
+#       sheet_fund_name  = the exact column header text you used in the sheet
+#       source           = which sheet the column lives in: cash / gold / equity / debt
+#       category         = Indian Equity / Foreign Equity / Gold / Debt / Cash Fund
+#  3. If a fund isn't in any Google Sheet yet, leave sheet_fund_name/source blank —
+#     the app will automatically fall back to the custodian snapshot's Unit Price
+#     or the latest observed transaction NAV, and still use the category you set.
+#  4. Rows starting with # are ignored.
+INF109KC1RH9,ICICI Oppurtunity,equity,Indian Equity
+INF200K01RJ1,SBI Focused Fund Growth,equity,Indian Equity
+INF109K01X40,ICICI Prudential Thematic Advan,equity,Indian Equity
+INF247L01CW5,Motilal Oswal Defence,equity,Indian Equity
+INF740K01QA7,DSP Natural Resources and New Energy,equity,Indian Equity
+INF00XX01747,ITI Small Cap,equity,Indian Equity
+INF194KB1AL4,Bandhan SmallCap,equity,Indian Equity
+INF205K013T3,Invesco India Smallcap Fund Reg NAV,equity,Indian Equity
+INF966L01580,Quant Multi Asset,equity,Indian Equity
+INF846K01X06,Axis Global Equity,equity,Foreign Equity
+INF846K01Y39,Axis Greater China,equity,Foreign Equity
+INF090I01JR0,,,Foreign Equity
+INF090I01IZ5,,,Foreign Equity
+INF754K01LB7,,,Foreign Equity
+INF174K01MP6,Kotak Gold Fund,gold,Gold
+INF109K01U92,,,Gold
+INF846K01DI3,Axis Dynamic Bond,debt,Debt
+INF277K017Q3,Tata Arbitrage,debt,Cash Fund
+INF174K01NE8,Kotak Liquid Fund,cash,Cash Fund

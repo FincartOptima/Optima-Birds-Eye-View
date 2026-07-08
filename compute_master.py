@@ -3,22 +3,9 @@ from __future__ import annotations
 from bisect import bisect_right
 from collections import defaultdict
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Any
 
-import openpyxl
-
+import gsheet_data
 from create_client_factsheet_report import CATEGORY_ORDER
-
-BASE_DIR = Path(__file__).resolve().parent
-
-SOURCE_FILES = {
-    'equity': BASE_DIR / 'Equity Source.xlsx',
-    'debt':   BASE_DIR / 'Debt Source.xlsx',
-    'gold':   BASE_DIR / 'Gold Source.xlsx',
-    'cash':   BASE_DIR / 'Cash Source.xlsx',
-}
-SCHEME_CATEGORY_FILE = BASE_DIR / 'Scheme and Category.xlsx'
 
 PERIOD_DAYS: list[tuple[str, int]] = [
     ('1M',   30),
@@ -37,70 +24,17 @@ PERIOD_LABELS = [p[0] for p in PERIOD_DAYS]
 # NAV loading
 # ---------------------------------------------------------------------------
 
-def _load_active_fund_map() -> dict[str, str]:
-    """Returns {fund_display_name: source_key} for Active='Y' funds only."""
-    active: dict[str, str] = {}
-    for source_key, fpath in SOURCE_FILES.items():
-        if not fpath.exists():
-            continue
-        wb = openpyxl.load_workbook(fpath, data_only=True, read_only=True)
-        if '_Codes' not in wb.sheetnames:
-            wb.close()
-            continue
-        for row in wb['_Codes'].iter_rows(min_row=2, values_only=True):
-            if row[0] and len(row) > 2 and row[2] == 'Y':
-                active[str(row[0]).strip()] = source_key
-        wb.close()
-    return active
-
-
 def load_nav_index() -> dict[str, dict]:
+    """Returns {fund_name: {'dates': [datetime, ...], 'values': [float, ...]}}
+
+    Sourced live from Google Sheets — see gsheet_data.py / fund_mapping.csv.
     """
-    Returns {fund_name: {'dates': [datetime, ...], 'values': [float, ...]}}
-    Only Active='Y' funds are included.
-    """
-    active_map = _load_active_fund_map()
-    nav_index: dict[str, dict] = {f: {'dates': [], 'values': []} for f in active_map}
-
-    for source_key, fpath in SOURCE_FILES.items():
-        if not fpath.exists():
-            continue
-        wb = openpyxl.load_workbook(fpath, data_only=True, read_only=True)
-        ws = wb.active
-        headers = [c.value for c in next(ws.iter_rows(min_row=1, max_row=1))]
-
-        # columns that belong to active funds from this source
-        fund_cols: dict[str, int] = {
-            h: i for i, h in enumerate(headers)
-            if h in active_map and active_map[h] == source_key
-        }
-
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            date = row[0]
-            if not isinstance(date, datetime):
-                continue
-            for fund, col_idx in fund_cols.items():
-                v = row[col_idx] if col_idx < len(row) else None
-                if isinstance(v, (int, float)):
-                    nav_index[fund]['dates'].append(date)
-                    nav_index[fund]['values'].append(float(v))
-        wb.close()
-
-    return nav_index
+    return gsheet_data.get_live_nav_index()
 
 
 def load_scheme_categories() -> dict[str, str]:
-    """Returns {scheme_display_name: category}."""
-    if not SCHEME_CATEGORY_FILE.exists():
-        return {}
-    wb = openpyxl.load_workbook(SCHEME_CATEGORY_FILE, data_only=True, read_only=True)
-    ws = wb.active
-    mapping: dict[str, str] = {}
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        if row[0] and row[1]:
-            mapping[str(row[0]).strip()] = str(row[1]).strip()
-    wb.close()
-    return mapping
+    """Returns {scheme_display_name: category}, sourced from fund_mapping.csv."""
+    return gsheet_data.get_live_scheme_categories()
 
 
 # ---------------------------------------------------------------------------
