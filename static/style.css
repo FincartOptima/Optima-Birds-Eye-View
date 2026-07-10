@@ -908,7 +908,7 @@ body {
 
 .fs-kpis {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 14px;
 }
 .fs-kpi {
@@ -931,6 +931,14 @@ body {
 .fs-kpi-sub { font-size: 0.78rem; color: var(--text-med); font-weight: 600; }
 .fs-kpi-sub.positive { color: var(--success); }
 .fs-kpi-sub.negative { color: var(--danger); }
+.fs-kpi-flag {
+    display: inline-block; margin-left: 6px;
+    font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.3px; color: var(--gold);
+    background: rgba(197, 146, 46, 0.15);
+    border-radius: 3px; padding: 1px 5px;
+    vertical-align: middle;
+}
 
 .fs-note {
     font-size: 0.8rem; color: var(--text-med);

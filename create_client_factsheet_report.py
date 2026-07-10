@@ -22,7 +22,10 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas as PdfCanvas
 from reportlab.lib.colors import HexColor
 
+from custodian_statement import CustodianStatement, CorpusDeposit
+
 REPORT_DATE = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
+
 
 CATEGORY_BY_ISIN = {
     "INF109KC1RH9": "Indian Equity",
@@ -109,11 +112,13 @@ class ClientReport:
     realized_pl: float = 0.0
     total_pl: float = 0.0
     xirr: float | None = None
+    simple_return: float | None = None
     benchmark_current_value: float | None = None
     benchmark_xirr: float | None = None
     category_rows: list[dict[str, Any]] = field(default_factory=list)
     top_holdings: list[Holding] = field(default_factory=list)
     performance_rows: list[tuple[datetime, float | None, float | None]] = field(default_factory=list)
+    custodian: CustodianStatement | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -156,12 +161,19 @@ def as_datetime(value: Any) -> datetime | None:
 
 
 def parse_sheet_date(sheet_name: str) -> datetime | None:
-    if not re.fullmatch(r"\d{8}", sheet_name):
+    # An optional leading "R" marks a dedicated redemption sheet (e.g.
+    # "R08072026"). The date itself is still the trailing 8 digits.
+    match = re.fullmatch(r"[Rr]?(\d{8})", sheet_name)
+    if not match:
         return None
     try:
-        return datetime.strptime(sheet_name, "%d%m%Y")
+        return datetime.strptime(match.group(1), "%d%m%Y")
     except ValueError:
         return None
+
+
+def is_redemption_sheet_name(sheet_name: str) -> bool:
+    return bool(re.fullmatch(r"[Rr]\d{8}", sheet_name))
 
 
 def header_index(headers: list[Any]) -> dict[str, int]:
@@ -201,6 +213,53 @@ def infer_category(isin: str, scheme_name: str) -> str:
 # Data readers
 # ---------------------------------------------------------------------------
 
+def validate_trade_master(workbook) -> list[str]:
+    """Return a list of format errors for the trade master workbook.
+    An empty list means the file is valid."""
+    errors: list[str] = []
+    if "Master" not in workbook.sheetnames:
+        errors.append("Missing required 'Master' sheet. The Trade Master file must contain a sheet named 'Master'.")
+    else:
+        sheet = workbook["Master"]
+        headers = [cell.value for cell in next(sheet.iter_rows(min_row=1, max_row=1))]
+        idx = header_index(headers)
+        if idx.get("ucc code") is None:
+            errors.append("The 'Master' sheet is missing the 'UCC Code' column header.")
+        if idx.get("client name") is None:
+            errors.append("The 'Master' sheet is missing the 'Client Name' column header.")
+
+    date_sheets = [s for s in workbook.sheetnames if parse_sheet_date(s) is not None]
+    if not date_sheets:
+        errors.append(
+            "No transaction sheets found. The file must contain at least one sheet "
+            "named as DDMMYYYY (e.g. '08072026') or RDDMMYYYY for redemptions."
+        )
+    return errors
+
+
+def validate_client_csv(file_path: Path) -> list[str]:
+    """Return a list of format errors for the client holdings CSV.
+    An empty list means the file is valid."""
+    errors: list[str] = []
+    required = {"client code", "isin", "quantity", "market value"}
+    try:
+        with open(file_path, newline="", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames is None:
+                errors.append("The CSV file appears to be empty or has no header row.")
+                return errors
+            found = {h.strip().lower() for h in reader.fieldnames if h}
+            missing = required - found
+            if missing:
+                nice = ", ".join(sorted(m.title() for m in missing))
+                errors.append(f"The client CSV is missing required column(s): {nice}.")
+    except UnicodeDecodeError:
+        errors.append("The client file is not a valid CSV — it may be an Excel file renamed to .csv.")
+    except Exception as exc:
+        errors.append(f"Could not read the client CSV: {exc}")
+    return errors
+
+
 def read_master(workbook) -> dict[str, dict[str, Any]]:
     if "Master" not in workbook.sheetnames:
         return {}
@@ -228,11 +287,10 @@ def read_master(workbook) -> dict[str, dict[str, Any]]:
     return master
 
 
-# Fixed 0-based column positions used only for the failed-transaction check
-# and its Reason text. These are literal spreadsheet positions (K, C, Z, V),
-# not header-name lookups, since the trade master's header text/order drifts
-# from sheet to sheet but the failed-transaction convention is positional.
-_VALUE_COL_IDX = 10   # column K
+# Fixed 0-based column positions for the failed-transaction Reason text
+# (columns C, Z, V). These stay positional -- the "settlement value" check
+# itself is resolved by header name (see _find_column below) so it keeps
+# working across sheets whose layout/column order differs.
 _REASON_COL_IDX_C = 2   # column C
 _REASON_COL_IDX_Z = 25  # column Z
 _REASON_COL_IDX_V = 21  # column V
@@ -240,6 +298,19 @@ _REASON_COL_IDX_V = 21  # column V
 
 def _cell(row: list[Any], idx: int) -> Any:
     return row[idx] if idx < len(row) else None
+
+
+def _find_column(headers: list[Any], *aliases: str) -> int | None:
+    index = header_index(headers)
+    for alias in aliases:
+        pos = index.get(clean_header(alias))
+        if pos is not None:
+            return pos
+    return None
+
+
+def _is_blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
 
 
 def read_transactions(
@@ -255,7 +326,8 @@ def read_transactions(
         if not rows:
             continue
         headers = list(rows[0])
-        transaction_type = "Subscription"
+        transaction_type = "Redemption" if is_redemption_sheet_name(sheet.title) else "Subscription"
+        has_type_column = _find_column(headers, "Type of Instruction") is not None
         for row_number, row_tuple in enumerate(rows[1:], start=2):
             row = list(row_tuple)
             first_cell = clean_header(row[0] if row else None)
@@ -264,21 +336,49 @@ def read_transactions(
                 continue
             if first_cell == "ucc":
                 headers = row
+                has_type_column = _find_column(headers, "Type of Instruction") is not None
                 if any(clean_header(header) == "redemption" for header in headers):
                     transaction_type = "Redemption"
                 continue
-            amount = to_number(row_value(row, headers, "Amount/Units"))
             ucc = clean_text(row_value(row, headers, "UCC"))
             client_name = clean_text(row_value(row, headers, "Client Name"))
             scheme_name = clean_text(row_value(row, headers, "Scheme Name"))
             isin = clean_text(row_value(row, headers, "ISIN Code"))
-            if not (amount is not None and re.fullmatch(r"CRFM\d+", ucc, re.I) and client_name and scheme_name):
+            if not (re.fullmatch(r"CRFM\d+", ucc, re.I) and client_name and scheme_name):
                 continue
             if ucc in master:
                 client_name = master[ucc]["client_name"]
 
-            value_cell = _cell(row, _VALUE_COL_IDX)
-            if value_cell is None or (isinstance(value_cell, str) and not value_cell.strip()):
+            # A per-row "Type of Instruction" column (when present) is the
+            # most reliable signal -- it only ever pushes toward Redemption,
+            # never resets an already-active redemption section back to
+            # Subscription, so it can't disturb the older marker-row logic.
+            row_type = transaction_type
+            if has_type_column:
+                instruction = clean_header(row_value(row, headers, "Type of Instruction"))
+                if instruction == "redemption":
+                    row_type = "Redemption"
+
+            # Resolve the money amount and the settlement-pending value.
+            # Older sheets carry both in separate columns: "Amount/Units"
+            # (money, always filled up front) and a units-ish column that's
+            # blank until the order settles. Newer sheets (e.g. the
+            # "R"-prefixed redemption format) have no combined Amount/Units
+            # column at all -- units-to-redeem is filled up front instead,
+            # and the "Value" column (₹ realized) is what's blank until
+            # settlement, so that becomes both the amount and the check.
+            amount_col = _find_column(headers, "Amount/Units")
+            if amount_col is not None:
+                amount = to_number(_cell(row, amount_col))
+                settle_col = _find_column(headers, "UNITS", "Units", "Value")
+            else:
+                settle_col = _find_column(headers, "Value")
+                amount = to_number(_cell(row, settle_col)) if settle_col is not None else None
+
+            settle_cell = _cell(row, settle_col) if settle_col is not None else None
+            is_failed = settle_col is None or _is_blank(settle_cell)
+
+            if is_failed:
                 reason_parts = [
                     clean_text(_cell(row, _REASON_COL_IDX_C)),
                     clean_text(_cell(row, _REASON_COL_IDX_Z)),
@@ -298,12 +398,15 @@ def read_transactions(
                 )
                 continue
 
+            if amount is None:
+                continue
+
             transactions.append(
                 Transaction(
                     source_sheet=sheet.title,
                     source_row=row_number,
                     statement_date=statement_date,
-                    transaction_type=transaction_type,
+                    transaction_type=row_type,
                     ucc=ucc,
                     client_name=client_name,
                     scheme_name=scheme_name,
@@ -469,6 +572,8 @@ def benchmark_value_and_xirr(
     return current_value, xirr(cashflows)
 
 
+
+
 def make_benchmark_series(
     transactions: list[Transaction],
     prices: list[tuple[datetime, float]],
@@ -550,7 +655,9 @@ def build_client_reports(
     bse_prices: list[tuple[datetime, float]],
     current_navs: dict[str, float],
     category_overrides: dict[str, str],
+    custodian_data: dict[str, CustodianStatement] | None = None,
 ) -> list[ClientReport]:
+    custodian_data = custodian_data or {}
     transactions_by_ucc: dict[str, list[Transaction]] = defaultdict(list)
     for transaction in transactions:
         transactions_by_ucc[transaction.ucc].append(transaction)
@@ -561,12 +668,14 @@ def build_client_reports(
             transactions_by_ucc.get(ucc, []),
             key=lambda item: (item.statement_date, item.source_sheet, item.source_row),
         )
+        custodian = custodian_data.get(ucc)
         report = ClientReport(
             client_name=master_row["client_name"],
             ucc=ucc,
             initial_investment=master_row["initial_investment"],
             initial_date=master_row.get("initial_date"),
             transactions=client_transactions,
+            custodian=custodian,
         )
         holdings_by_isin: dict[str, Holding] = {}
         for transaction in client_transactions:
@@ -617,7 +726,10 @@ def build_client_reports(
             transaction.amount if transaction.transaction_type == "Subscription" else -transaction.amount
             for transaction in client_transactions
         )
-        report.only_cash = max(report.initial_investment - net_fund_investment, 0.0)
+        if custodian and custodian.cash is not None:
+            report.only_cash = custodian.cash
+        else:
+            report.only_cash = max(report.initial_investment - net_fund_investment, 0.0)
         report.cost_value += report.only_cash
         report.current_value += report.only_cash
         report.unrealized_pl = report.current_value - report.cost_value
@@ -646,21 +758,41 @@ def build_client_reports(
                 }
             )
         report.top_holdings = [holding for holding in report.holdings if holding.current_value > 0][:5]
-        portfolio_cashflows = []
-        if report.initial_investment > 0:
-            start_date = report.initial_date or (
+
+        # Build XIRR cashflows using real deposit dates from the account
+        # statement when available; fall back to the Master sheet's single
+        # lump-sum figure otherwise.
+        effective_initial_investment = report.initial_investment
+        effective_initial_date = report.initial_date
+        portfolio_cashflows: list[tuple[datetime, float]] = []
+
+        if custodian and custodian.deposits:
+            for dep in custodian.deposits:
+                portfolio_cashflows.append((dep.date, -dep.amount))
+            effective_initial_investment = custodian.total_contribution
+            effective_initial_date = custodian.deposits[0].date
+        elif effective_initial_investment > 0:
+            start_date = effective_initial_date or (
                 min(transaction.statement_date for transaction in client_transactions) if client_transactions else REPORT_DATE
             )
-            portfolio_cashflows.append((start_date, -report.initial_investment))
+            portfolio_cashflows.append((start_date, -effective_initial_investment))
         else:
             for transaction in client_transactions:
                 amount = transaction.amount if transaction.transaction_type == "Redemption" else -transaction.amount
                 portfolio_cashflows.append((transaction.statement_date, amount))
+
         if report.current_value:
             portfolio_cashflows.append((REPORT_DATE, report.current_value))
         report.xirr = xirr(portfolio_cashflows)
+
+        # Simple (non-annualized) return: (current value - capital deployed) / capital deployed
+        if effective_initial_investment > 0:
+            report.simple_return = (report.current_value - effective_initial_investment) / effective_initial_investment
+        else:
+            report.simple_return = None
+
         report.benchmark_current_value, report.benchmark_xirr = benchmark_value_and_xirr(
-            client_transactions, bse_prices, REPORT_DATE, report.initial_investment, report.initial_date
+            client_transactions, bse_prices, REPORT_DATE, effective_initial_investment, effective_initial_date
         )
         client_series = make_client_series(client_transactions, holdings_by_isin, REPORT_DATE)
         benchmark_series = make_benchmark_series(client_transactions, bse_prices, REPORT_DATE)
@@ -768,17 +900,21 @@ def _draw_simple_factsheet(c: PdfCanvas, report: ClientReport) -> None:
     c.drawRightString(_LM + _CW - 14, y - 32, REPORT_DATE.strftime("%B %Y"))
     y -= 62
 
-    # ---- KPI strip (4 boxes) --------------------------------------------
-    box_w = _CW / 4
+    # ---- KPI strip (5 boxes) -------------------------------------------
     box_h = 50
     kpis = [
-        ("INVESTED",      _fmt_inr(report.cost_value),    ""),
-        ("CURRENT VALUE", _fmt_inr(report.current_value), ""),
-        ("GAIN / LOSS",   _fmt_inr(report.total_pl),      _fmt_pct(gl_frac)),
-        ("XIRR",          _fmt_pct(report.xirr) if report.xirr is not None else "N/A",
-                          f"BSE 500: {_fmt_pct(report.benchmark_xirr) if report.benchmark_xirr is not None else 'N/A'}"),
+        ("INVESTED",      _fmt_inr(report.cost_value),    "", None),
+        ("CURRENT VALUE", _fmt_inr(report.current_value), "", None),
+        ("GAIN / LOSS",   _fmt_inr(report.total_pl),      _fmt_pct(gl_frac), gl_frac),
+        ("SIMPLE RETURN", _fmt_pct(report.simple_return) if report.simple_return is not None else "N/A",
+                          "Non-annualised, since inception",
+                          report.simple_return),
+        ("XIRR (ANNUALISED)", _fmt_pct(report.xirr) if report.xirr is not None else "N/A",
+                          f"BSE 500: {_fmt_pct(report.benchmark_xirr) if report.benchmark_xirr is not None else 'N/A'}",
+                          report.xirr),
     ]
-    for i, (label, value, sub) in enumerate(kpis):
+    box_w = _CW / len(kpis)
+    for i, (label, value, sub, color_value) in enumerate(kpis):
         bx = _LM + i * box_w
         c.setFillColor(_LIGHT_BLUE)
         c.rect(bx, y - box_h, box_w, box_h, fill=True, stroke=False)
@@ -788,13 +924,7 @@ def _draw_simple_factsheet(c: PdfCanvas, report: ClientReport) -> None:
         c.setFillColor(_TEXT_MED)
         c.setFont("Helvetica-Bold", 7)
         c.drawCentredString(bx + box_w / 2, y - 12, label)
-        # Colour Gain/Loss + XIRR
-        if i == 2:
-            c.setFillColor(_pct_color(gl_frac))
-        elif i == 3 and report.xirr is not None:
-            c.setFillColor(_pct_color(report.xirr))
-        else:
-            c.setFillColor(_NAVY)
+        c.setFillColor(_pct_color(color_value) if color_value is not None else _NAVY)
         c.setFont("Helvetica-Bold", 12)
         c.drawCentredString(bx + box_w / 2, y - 28, value)
         if sub:

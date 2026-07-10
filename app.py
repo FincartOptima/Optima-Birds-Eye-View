@@ -14,8 +14,11 @@ from openpyxl import load_workbook
 from create_client_factsheet_report import (
     read_master, read_transactions,
     read_current_navs, read_client_file_csv, build_client_reports, generate_client_pdf,
+    validate_trade_master, validate_client_csv,
     REPORT_DATE, CATEGORY_ORDER,
 )
+from custodian_statement import validate_custodian_statement, read_custodian_statement
+import csv as csv_mod
 import gsheet_data
 
 app = Flask(__name__)
@@ -125,18 +128,22 @@ def upload_file():
     """
     xlsx = request.files.get('file')
     snap = request.files.get('nav_file')
+    custodian_file = request.files.get('custodian_file')
     nav_url = request.form.get('nav_sheet_url', '').strip()
     master_url = request.form.get('master_sheet_url', '').strip()
 
     has_xlsx = bool(xlsx and xlsx.filename)
     has_snap = bool(snap and snap.filename)
+    has_custodian = bool(custodian_file and custodian_file.filename)
 
     if has_xlsx and not xlsx.filename.lower().endswith(('.xlsx', '.xls')):
         return jsonify({'error': 'The trade master must be an Excel file (.xlsx, .xls)'}), 400
     if has_snap and not snap.filename.lower().endswith('.csv'):
         return jsonify({'error': 'The client holdings snapshot must be a .csv file'}), 400
+    if has_custodian and not custodian_file.filename.lower().endswith('.xls'):
+        return jsonify({'error': 'The custodian portfolio statement must be an old-format Excel file (.xls)'}), 400
 
-    if not has_xlsx and not has_snap and not nav_url and not master_url:
+    if not has_xlsx and not has_snap and not has_custodian and not nav_url and not master_url:
         return jsonify({'error': 'No file or Google Sheet URL provided.'}), 400
 
     try:
@@ -161,9 +168,38 @@ def upload_file():
 
         current_navs, category_overrides = {}, {}
         if snap_path:
+            csv_errors = validate_client_csv(Path(snap_path))
+            if csv_errors:
+                return jsonify({'error': 'Invalid client file format:\n• ' + '\n• '.join(csv_errors)}), 400
             reports_cache['csv_path'] = snap_path
             current_navs, category_overrides = read_client_file_csv(Path(snap_path))
             print(f"Snapshot NAVs: {len(current_navs)}")
+
+        # ---- Resolve the custodian account statement source (optional) ----
+        custodian_data = {}
+        if has_custodian:
+            custodian_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(custodian_file.filename))
+            custodian_file.save(custodian_path)
+            custodian_errors = validate_custodian_statement(Path(custodian_path))
+            if custodian_errors:
+                return jsonify({'error': 'Invalid custodian account statement format:\n• ' + '\n• '.join(custodian_errors)}), 400
+
+            # Build CODE → UCC mapping from the client CSV (if uploaded)
+            code_to_ucc: dict[str, str] = {}
+            if snap_path:
+                with open(snap_path, newline="", encoding="utf-8-sig") as f:
+                    for row in csv_mod.DictReader(f):
+                        code = (row.get("CODE") or "").strip()
+                        ucc = (row.get("Client code") or "").strip()
+                        if code and ucc and code not in code_to_ucc:
+                            code_to_ucc[code] = ucc
+
+            custodian_data, custodian_warnings = read_custodian_statement(
+                Path(custodian_path), code_to_ucc=code_to_ucc,
+            )
+            print(f"Custodian account statement: {len(custodian_data)} client accounts parsed")
+            for w in custodian_warnings:
+                print(f"[custodian] {w}")
 
         # ---- Resolve the trade master XLSX source ----
         xlsx_path = None
@@ -182,6 +218,11 @@ def upload_file():
         if xlsx_path:
             print(f"Processing trade master: {xlsx_path}")
             source_workbook = load_workbook(xlsx_path, data_only=True)
+
+            xlsx_errors = validate_trade_master(source_workbook)
+            if xlsx_errors:
+                return jsonify({'error': 'Invalid Trade Master format:\n• ' + '\n• '.join(xlsx_errors)}), 400
+
             master = read_master(source_workbook)
             if not master:
                 return jsonify({'error': 'No valid client data found in the trade master file'}), 400
@@ -215,7 +256,10 @@ def upload_file():
             for w in gsheet_warnings:
                 print(f"[gsheet] {w}")
 
-            reports = build_client_reports(master, transactions, bse_prices, current_navs, category_overrides)
+            reports = build_client_reports(
+                master, transactions, bse_prices, current_navs, category_overrides,
+                custodian_data=custodian_data,
+            )
             reports_cache['reports'] = reports
             reports_cache['bse_prices'] = bse_prices
             reports_cache['file_path'] = xlsx_path
@@ -247,6 +291,7 @@ def upload_file():
             'total_clients': len(client_list),
             'has_master': has_any_master,
             'has_snapshot': has_any_snap,
+            'has_custodian': bool(custodian_data),
             'message': f'Loaded {len(client_list)} clients successfully'
         })
 
@@ -256,7 +301,10 @@ def upload_file():
         print(f"Error processing file: {str(e)}")
         import traceback
         traceback.print_exc()
-        return jsonify({'error': f'Error processing file: {str(e)}'}), 500
+        msg = str(e)
+        if 'not a zip file' in msg.lower() or 'badzipfile' in msg.lower():
+            msg = 'The Trade Master file is not a valid Excel (.xlsx) file. Please check you uploaded the correct file.'
+        return jsonify({'error': msg}), 400
 
 
 @app.route('/api/client/<int:client_id>')
@@ -293,8 +341,11 @@ def get_client_data(client_id):
             'realized_pl': report.realized_pl,
             'total_pl': report.total_pl,
             'portfolio_xirr': report.xirr,
+            'simple_return': report.simple_return,
             'benchmark_xirr': report.benchmark_xirr,
             'benchmark_value': report.benchmark_current_value,
+            'custodian_cash': report.custodian.cash if report.custodian else None,
+            'custodian_contribution': report.custodian.total_contribution if report.custodian else None,
         },
 
         # Category breakdown

@@ -61,7 +61,8 @@ function hideLoading() {
 }
 
 function showError(message) {
-    document.getElementById('errorText').textContent = message;
+    const el = document.getElementById('errorText');
+    el.innerHTML = message.replace(/\n/g, '<br>');
     document.getElementById('errorModal').style.display = 'flex';
 }
 
@@ -81,15 +82,33 @@ document.getElementById('fileInput').addEventListener('change', (e) => {
     const f = e.target.files[0];
     document.getElementById('xlsxPicked').textContent = f ? f.name : 'No file';
 });
+document.getElementById('custodianInput').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    document.getElementById('custodianPicked').textContent = f ? f.name : 'No file';
+});
 
 async function processUpload() {
     const csvFile = document.getElementById('csvInput').files[0];
     const xlsxFile = document.getElementById('fileInput').files[0];
+    const custodianFile = document.getElementById('custodianInput').files[0];
     const navUrl = document.getElementById('navSheetUrl').value.trim();
     const masterUrl = document.getElementById('masterSheetUrl').value.trim();
 
-    if (!csvFile && !xlsxFile && !navUrl && !masterUrl) {
+    if (!csvFile && !xlsxFile && !custodianFile && !navUrl && !masterUrl) {
         showError('Please choose at least one file or paste a Google Sheet URL.');
+        return;
+    }
+
+    if (csvFile && !csvFile.name.toLowerCase().endsWith('.csv')) {
+        showError('The Client Holdings file must be a .csv file.');
+        return;
+    }
+    if (xlsxFile && !xlsxFile.name.toLowerCase().match(/\.xlsx?$/)) {
+        showError('The Trade Allocation Master must be an Excel file (.xlsx or .xls).');
+        return;
+    }
+    if (custodianFile && !custodianFile.name.toLowerCase().endsWith('.xls')) {
+        showError('The Custodian Portfolio Statement must be an old-format Excel file (.xls).');
         return;
     }
 
@@ -98,6 +117,7 @@ async function processUpload() {
     const formData = new FormData();
     if (xlsxFile) formData.append('file', xlsxFile);
     if (csvFile)  formData.append('nav_file', csvFile);
+    if (custodianFile) formData.append('custodian_file', custodianFile);
     if (navUrl)   formData.append('nav_sheet_url', navUrl);
     if (masterUrl) formData.append('master_sheet_url', masterUrl);
 
@@ -264,13 +284,24 @@ function renderClientData() {
     glPctEl.textContent = signedPct(glPct);
     glPctEl.className = 'fs-kpi-sub ' + glClass(glPct);
 
-    const xirr = document.getElementById('portfolioXIRR');
-    if (data.metrics.portfolio_xirr !== null) {
-        xirr.textContent = formatPercentage(data.metrics.portfolio_xirr);
-        xirr.className = 'fs-kpi-value ' + glClass(data.metrics.portfolio_xirr);
+    // Simple Return
+    const simpleReturnEl = document.getElementById('simpleReturn');
+    if (data.metrics.simple_return !== null && data.metrics.simple_return !== undefined) {
+        simpleReturnEl.textContent = formatPercentage(data.metrics.simple_return);
+        simpleReturnEl.className = 'fs-kpi-value ' + glClass(data.metrics.simple_return);
     } else {
-        xirr.textContent = 'N/A';
-        xirr.className = 'fs-kpi-value';
+        simpleReturnEl.textContent = 'N/A';
+        simpleReturnEl.className = 'fs-kpi-value';
+    }
+
+    // XIRR (Annualised)
+    const xirrEl = document.getElementById('portfolioXIRR');
+    if (data.metrics.portfolio_xirr !== null) {
+        xirrEl.textContent = formatPercentage(data.metrics.portfolio_xirr);
+        xirrEl.className = 'fs-kpi-value ' + glClass(data.metrics.portfolio_xirr);
+    } else {
+        xirrEl.textContent = 'N/A';
+        xirrEl.className = 'fs-kpi-value';
     }
 
     const bxirr = document.getElementById('benchmarkXIRR');
@@ -443,8 +474,10 @@ function resetApp() {
     document.getElementById('fileInfo').textContent = '';
     document.getElementById('fileInput').value = '';
     document.getElementById('csvInput').value = '';
+    document.getElementById('custodianInput').value = '';
     document.getElementById('csvPicked').textContent = 'No file';
     document.getElementById('xlsxPicked').textContent = 'No file';
+    document.getElementById('custodianPicked').textContent = 'No file';
     document.getElementById('clientSearch').value = '';
 }
 

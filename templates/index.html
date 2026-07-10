@@ -57,6 +57,16 @@
                         <input type="text" id="masterSheetUrl" class="gsheet-url-input"
                                placeholder="https://docs.google.com/spreadsheets/d/…">
                     </div>
+
+                    <div class="upload-row">
+                        <div class="upload-row-label">
+                            <strong>Custodian Account Statement</strong> <span class="opt">optional</span>
+                            <small>Account statement (.xls) — provides real deposit dates for accurate XIRR &amp; cash calculation</small>
+                        </div>
+                        <input type="file" id="custodianInput" accept=".xls" style="display:none;">
+                        <button class="btn btn-secondary" onclick="document.getElementById('custodianInput').click()">Choose Statement</button>
+                        <span class="picked" id="custodianPicked">No file</span>
+                    </div>
                 </div>
 
                 <button class="btn btn-primary" id="loadBtn" onclick="processUpload()">Load Dashboard</button>
@@ -133,12 +143,17 @@
                             <span class="fs-kpi-sub" id="gainLossPct">—</span>
                         </div>
                         <div class="fs-kpi">
-                            <span class="fs-kpi-label">XIRR (since inception)</span>
+                            <span class="fs-kpi-label">Simple Return</span>
+                            <span class="fs-kpi-value" id="simpleReturn">N/A</span>
+                            <span class="fs-kpi-sub">Non-annualised, since inception</span>
+                        </div>
+                        <div class="fs-kpi">
+                            <span class="fs-kpi-label">XIRR (Annualised)</span>
                             <span class="fs-kpi-value" id="portfolioXIRR">N/A</span>
                             <span class="fs-kpi-sub" id="benchmarkXIRR">BSE 500: N/A</span>
                         </div>
                     </div>
-                    <p class="fs-note">Performance shown two ways &mdash; <strong>absolute Gain/Loss</strong> (cost vs current value) and <strong>XIRR</strong> (annualised since inception, where transaction history is available), benchmarked to BSE 500.</p>
+                    <p class="fs-note">Performance shown three ways &mdash; <strong>Gain/Loss</strong> (absolute rupee P&amp;L), <strong>Simple Return</strong> (total P&amp;L &divide; total capital deployed, non-annualised), and <strong>XIRR</strong> (annualised money-weighted return accounting for the timing of each deposit), benchmarked to BSE 500.</p>
 
                     <!-- About Section -->
                     <section class="section">
