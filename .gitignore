@@ -7,7 +7,7 @@ generated_pdfs/
 Client_Factsheets/
 
 # Sensitive data files (client-identifying)
-Trade Allocation_Master.xlsx
+Trade Allocation_Master*.xlsx
 Current_NAVs.xlsx
 Client_Factsheet_Report.xlsx
 client file.csv
