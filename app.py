@@ -13,9 +13,10 @@ from collections import defaultdict
 from openpyxl import load_workbook
 from create_client_factsheet_report import (
     read_master, read_transactions,
-    read_current_navs, read_client_file_csv, build_client_reports, generate_client_pdf,
+    read_current_navs, read_client_file_csv, read_snapshot_details,
+    build_client_reports, generate_client_pdf,
     validate_trade_master, validate_client_csv,
-    REPORT_DATE, CATEGORY_ORDER,
+    set_report_date, get_report_date, CATEGORY_ORDER,
 )
 from custodian_statement import validate_custodian_statement, read_custodian_statement
 import csv as csv_mod
@@ -167,13 +168,19 @@ def upload_file():
             print(f"Holdings CSV fetched ({len(csv_bytes):,} bytes)")
 
         current_navs, category_overrides = {}, {}
+        snapshot_holdings, snapshot_cash = {}, {}
         if snap_path:
             csv_errors = validate_client_csv(Path(snap_path))
             if csv_errors:
                 return jsonify({'error': 'Invalid client file format:\n• ' + '\n• '.join(csv_errors)}), 400
             reports_cache['csv_path'] = snap_path
             current_navs, category_overrides = read_client_file_csv(Path(snap_path))
-            print(f"Snapshot NAVs: {len(current_navs)}")
+            snap_date, snapshot_holdings, snapshot_cash = read_snapshot_details(Path(snap_path))
+            if snap_date:
+                # Value & annualise everything as of the snapshot's holding
+                # date — the date the NAVs actually belong to.
+                set_report_date(snap_date)
+            print(f"Snapshot NAVs: {len(current_navs)}, holding date: {snap_date}")
 
         # ---- Resolve the custodian account statement source (optional) ----
         custodian_data = {}
@@ -259,6 +266,8 @@ def upload_file():
             reports = build_client_reports(
                 master, transactions, bse_prices, current_navs, category_overrides,
                 custodian_data=custodian_data,
+                snapshot_holdings=snapshot_holdings,
+                snapshot_cash=snapshot_cash,
             )
             reports_cache['reports'] = reports
             reports_cache['bse_prices'] = bse_prices
@@ -321,20 +330,26 @@ def get_client_data(client_id):
 
     report = reports[client_id]
 
-    # Prepare structured data from report
-    inception_date = report.initial_date or (
-        min(t.statement_date for t in report.transactions) if report.transactions else datetime.now()
-    )
+    # Prepare structured data from report. Inception = first real corpus
+    # deposit (custodian statement) when available — the same date XIRR uses.
+    if report.custodian and report.custodian.deposits:
+        inception_date = report.custodian.deposits[0].date
+    else:
+        inception_date = report.initial_date or (
+            min(t.statement_date for t in report.transactions) if report.transactions else datetime.now()
+        )
 
     client_data = {
         'id': client_id,
         'name': report.client_name,
         'ucc': report.ucc,
         'inception_date': inception_date.strftime('%d %b %Y'),
-        'report_date': REPORT_DATE.strftime('%d %b %Y'),
+        'report_date': get_report_date().strftime('%d %b %Y'),
 
         # Key metrics
         'metrics': {
+            'invested': report.contribution,
+            'gain_loss': report.net_gain,
             'cost_value': report.cost_value,
             'current_value': report.current_value,
             'unrealized_pl': report.unrealized_pl,
@@ -425,7 +440,7 @@ def download_client_pdf(client_id):
 
         pdf_buffer.seek(0)
         safe_name = report.client_name.replace(' ', '_').replace('/', '_')
-        filename = f"{safe_name}_Factsheet_{REPORT_DATE.strftime('%b_%Y')}.pdf"
+        filename = f"{safe_name}_Factsheet_{get_report_date().strftime('%b_%Y')}.pdf"
 
         return send_file(
             pdf_buffer,
@@ -455,11 +470,10 @@ def get_master():
 
     try:
         from compute_master import get_master_data
-        from create_client_factsheet_report import REPORT_DATE
         data = get_master_data(
             reports_cache['reports'],
             reports_cache['bse_prices'],
-            REPORT_DATE,
+            get_report_date(),
         )
         return jsonify(data)
     except Exception as e:

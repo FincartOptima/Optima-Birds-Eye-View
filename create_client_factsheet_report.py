@@ -27,6 +27,17 @@ from custodian_statement import CustodianStatement, CorpusDeposit
 REPORT_DATE = datetime.today().replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def set_report_date(date: datetime) -> None:
+    """Align the report/valuation date to the snapshot CSV's holding date, so
+    XIRR and the displayed report date match the date the NAVs belong to."""
+    global REPORT_DATE
+    REPORT_DATE = date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def get_report_date() -> datetime:
+    return REPORT_DATE
+
+
 CATEGORY_BY_ISIN = {
     "INF109KC1RH9": "Indian Equity",
     "INF200K01RJ1": "Indian Equity",
@@ -113,6 +124,8 @@ class ClientReport:
     total_pl: float = 0.0
     xirr: float | None = None
     simple_return: float | None = None
+    contribution: float = 0.0
+    net_gain: float = 0.0
     benchmark_current_value: float | None = None
     benchmark_xirr: float | None = None
     category_rows: list[dict[str, Any]] = field(default_factory=list)
@@ -470,6 +483,50 @@ def read_client_file_csv(file_path: Path) -> tuple[dict[str, float], dict[str, s
     return navs, {}
 
 
+def read_snapshot_details(
+    file_path: Path,
+) -> tuple[datetime | None, dict[str, dict[str, dict[str, Any]]], dict[str, float]]:
+    """Per-client detail from the custodian holdings-snapshot CSV.
+
+    Returns (holding_date, {ucc: {isin: {'units', 'cost', 'scheme'}}}, {ucc: cash}).
+    The snapshot's quantities and costs are the custodian's official allotted
+    figures as of the holding date; they override trade-master-derived units
+    so every tab of the webpage values the same portfolio on the same date.
+    Cash counts only the literal uninvested CASH rows.
+    """
+    holdings: dict[str, dict[str, dict[str, Any]]] = {}
+    cash: dict[str, float] = {}
+    holding_date: datetime | None = None
+    if not file_path.exists():
+        return None, holdings, cash
+    with open(file_path, newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            ucc = clean_text(row.get("Client code"))
+            if not ucc:
+                continue
+            if holding_date is None:
+                try:
+                    holding_date = datetime.strptime(clean_text(row.get("Holding Date")), "%d/%m/%Y")
+                except ValueError:
+                    pass
+            symbol = clean_text(row.get("SYMBOLCODE")).upper()
+            scheme = clean_text(row.get("SYMBOLNAME"))
+            isin = clean_text(row.get("ISIN"))
+            mkt = to_number(row.get("Market Value")) or 0.0
+            if symbol == "CASH" or (not isin and scheme.lower() == "cash"):
+                cash[ucc] = cash.get(ucc, 0.0) + mkt
+                continue
+            units = to_number(row.get("QUANTITY"))
+            if not isin or units is None:
+                continue
+            holdings.setdefault(ucc, {})[isin] = {
+                "units": units,
+                "cost": to_number(row.get("Total Cost")) or 0.0,
+                "scheme": scheme,
+            }
+    return holding_date, holdings, cash
+
+
 def latest_observed_navs(transactions: list[Transaction]) -> dict[str, tuple[float, datetime]]:
     navs: dict[str, tuple[float, datetime]] = {}
     for transaction in transactions:
@@ -656,8 +713,12 @@ def build_client_reports(
     current_navs: dict[str, float],
     category_overrides: dict[str, str],
     custodian_data: dict[str, CustodianStatement] | None = None,
+    snapshot_holdings: dict[str, dict[str, dict[str, Any]]] | None = None,
+    snapshot_cash: dict[str, float] | None = None,
 ) -> list[ClientReport]:
     custodian_data = custodian_data or {}
+    snapshot_holdings = snapshot_holdings or {}
+    snapshot_cash = snapshot_cash or {}
     transactions_by_ucc: dict[str, list[Transaction]] = defaultdict(list)
     for transaction in transactions:
         transactions_by_ucc[transaction.ucc].append(transaction)
@@ -705,6 +766,18 @@ def build_client_reports(
             else:
                 holding.units += units
                 holding.cost_value += transaction.amount
+        # The custodian snapshot's official units/cost (as of the holding
+        # date) override the trade-master-derived figures, so the factsheet
+        # values exactly the portfolio the custodian reports.
+        for isin, snap_row in snapshot_holdings.get(ucc, {}).items():
+            if isin not in holdings_by_isin:
+                category = category_overrides.get(isin) or infer_category(isin, snap_row["scheme"])
+                holdings_by_isin[isin] = Holding(
+                    isin=isin, scheme_name=snap_row["scheme"], category=category,
+                )
+            holding = holdings_by_isin[isin]
+            holding.units = snap_row["units"]
+            holding.cost_value = snap_row["cost"]
         for holding in holdings_by_isin.values():
             if holding.isin in current_navs:
                 holding.current_nav = current_navs[holding.isin]
@@ -726,7 +799,11 @@ def build_client_reports(
             transaction.amount if transaction.transaction_type == "Subscription" else -transaction.amount
             for transaction in client_transactions
         )
-        if custodian and custodian.cash is not None:
+        # Cash precedence: snapshot CSV CASH row (same as-of date as the
+        # valuation) > custodian statement cash > master-derived residual.
+        if ucc in snapshot_cash:
+            report.only_cash = snapshot_cash[ucc]
+        elif custodian and custodian.cash is not None:
             report.only_cash = custodian.cash
         else:
             report.only_cash = max(report.initial_investment - net_fund_investment, 0.0)
@@ -766,11 +843,12 @@ def build_client_reports(
         effective_initial_date = report.initial_date
         portfolio_cashflows: list[tuple[datetime, float]] = []
 
-        if custodian and custodian.deposits:
-            for dep in custodian.deposits:
+        dated_deposits = [d for d in custodian.deposits if d.date <= REPORT_DATE] if custodian else []
+        if dated_deposits:
+            for dep in dated_deposits:
                 portfolio_cashflows.append((dep.date, -dep.amount))
-            effective_initial_investment = custodian.total_contribution
-            effective_initial_date = custodian.deposits[0].date
+            effective_initial_investment = sum(d.amount for d in dated_deposits)
+            effective_initial_date = dated_deposits[0].date
         elif effective_initial_investment > 0:
             start_date = effective_initial_date or (
                 min(transaction.statement_date for transaction in client_transactions) if client_transactions else REPORT_DATE
@@ -785,11 +863,12 @@ def build_client_reports(
             portfolio_cashflows.append((REPORT_DATE, report.current_value))
         report.xirr = xirr(portfolio_cashflows)
 
-        # Simple (non-annualized) return: (current value - capital deployed) / capital deployed
-        if effective_initial_investment > 0:
-            report.simple_return = (report.current_value - effective_initial_investment) / effective_initial_investment
-        else:
-            report.simple_return = None
+        # Invested = total corpus deposited (custodian contribution when
+        # available). Gain/Loss and Simple Return both measure against it, so
+        # the KPI strip is internally consistent: Gain% == Simple Return.
+        report.contribution = effective_initial_investment if effective_initial_investment > 0 else report.cost_value
+        report.net_gain = report.current_value - report.contribution
+        report.simple_return = (report.net_gain / report.contribution) if report.contribution > 0 else None
 
         report.benchmark_current_value, report.benchmark_xirr = benchmark_value_and_xirr(
             client_transactions, bse_prices, REPORT_DATE, effective_initial_investment, effective_initial_date
@@ -856,6 +935,8 @@ def _pct_color(val: float | None):
 
 
 def _inception(report: ClientReport) -> datetime:
+    if report.custodian and report.custodian.deposits:
+        return report.custodian.deposits[0].date
     if report.initial_date:
         return report.initial_date
     if report.transactions:
@@ -882,7 +963,7 @@ def generate_client_pdf(report: ClientReport, output_path: Path) -> None:
 
 def _draw_simple_factsheet(c: PdfCanvas, report: ClientReport) -> None:
     inception_dt = _inception(report)
-    gl_frac = (report.total_pl / report.cost_value) if report.cost_value else 0.0
+    gl_frac = (report.net_gain / report.contribution) if report.contribution else 0.0
 
     # ---- Header band -----------------------------------------------------
     y = _PH - 12
@@ -903,9 +984,9 @@ def _draw_simple_factsheet(c: PdfCanvas, report: ClientReport) -> None:
     # ---- KPI strip (5 boxes) -------------------------------------------
     box_h = 50
     kpis = [
-        ("INVESTED",      _fmt_inr(report.cost_value),    "", None),
+        ("INVESTED",      _fmt_inr(report.contribution),  "Total corpus deposited", None),
         ("CURRENT VALUE", _fmt_inr(report.current_value), "", None),
-        ("GAIN / LOSS",   _fmt_inr(report.total_pl),      _fmt_pct(gl_frac), gl_frac),
+        ("GAIN / LOSS",   _fmt_inr(report.net_gain),      _fmt_pct(gl_frac), gl_frac),
         ("SIMPLE RETURN", _fmt_pct(report.simple_return) if report.simple_return is not None else "N/A",
                           "Non-annualised, since inception",
                           report.simple_return),

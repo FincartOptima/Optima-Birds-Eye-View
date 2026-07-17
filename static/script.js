@@ -272,14 +272,14 @@ function renderClientData() {
     document.getElementById('inceptionDate').textContent = data.inception_date;
     document.getElementById('reportDate').textContent = data.report_date;
 
-    document.getElementById('costValue').textContent = formatCurrency(data.metrics.cost_value);
+    document.getElementById('costValue').textContent = formatCurrency(data.metrics.invested);
     document.getElementById('currentValue').textContent = formatCurrency(data.metrics.current_value);
 
     const totalPLEl = document.getElementById('totalPL');
-    totalPLEl.textContent = formatCurrency(data.metrics.total_pl);
-    totalPLEl.className = 'fs-kpi-value ' + glClass(data.metrics.total_pl);
+    totalPLEl.textContent = formatCurrency(data.metrics.gain_loss);
+    totalPLEl.className = 'fs-kpi-value ' + glClass(data.metrics.gain_loss);
 
-    const glPct = data.metrics.cost_value ? (data.metrics.total_pl / data.metrics.cost_value) * 100 : 0;
+    const glPct = data.metrics.invested ? (data.metrics.gain_loss / data.metrics.invested) * 100 : 0;
     const glPctEl = document.getElementById('gainLossPct');
     glPctEl.textContent = signedPct(glPct);
     glPctEl.className = 'fs-kpi-sub ' + glClass(glPct);
