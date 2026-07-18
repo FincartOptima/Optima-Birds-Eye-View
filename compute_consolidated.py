@@ -32,7 +32,11 @@ def _split_name_ucc(name_field: str, client_code: str) -> tuple[str, str]:
     return name.title() if name.isupper() else name, ucc
 
 
-def compute_consolidated(csv_path: Path) -> dict:
+def compute_consolidated(csv_path: Path, current_navs: dict[str, float] | None = None) -> dict:
+    """Build consolidated view. When *current_navs* is supplied, each holding's
+    market value is recomputed as units × live NAV (instead of using the CSV's
+    stale valuation) so this tab matches the factsheet."""
+    current_navs = current_navs or {}
     if not csv_path.exists():
         return {"clients": [], "totals": {}, "report_date": ""}
 
@@ -71,14 +75,22 @@ def compute_consolidated(csv_path: Path) -> dict:
             pct_assets = to_number(row.get("% Assets")) or 0.0
             units = to_number(row.get("QUANTITY")) or 0.0
 
+            is_cash = symbol in _CASH_SYMBOLS or (not isin and scheme.lower() == "cash")
+            if is_cash:
+                c["cost"] += cost
+                c["market_value"] += mkt
+                c["gain_loss"] += gl
+                c["cash"] += mkt
+                continue  # don't list bare cash as a fund holding
+
+            if isin and isin in current_navs and units > 0:
+                mkt = units * current_navs[isin]
+                gl = mkt - cost
+                gl_pct = (gl / cost * 100) if cost else 0.0
+
             c["cost"] += cost
             c["market_value"] += mkt
             c["gain_loss"] += gl
-
-            is_cash = symbol in _CASH_SYMBOLS or (not isin and scheme.lower() == "cash")
-            if is_cash:
-                c["cash"] += mkt
-                continue  # don't list bare cash as a fund holding
 
             c["holdings"].append({
                 "scheme": scheme,
@@ -117,4 +129,6 @@ def compute_consolidated(csv_path: Path) -> dict:
         "cash_pct": (total_cash / total_mkt * 100) if total_mkt else 0.0,
     }
 
-    return {"clients": client_list, "totals": totals, "report_date": report_date}
+    from datetime import datetime
+    display_date = datetime.today().strftime("%d/%m/%Y") if current_navs else report_date
+    return {"clients": client_list, "totals": totals, "report_date": display_date}

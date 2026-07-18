@@ -16,7 +16,7 @@ from create_client_factsheet_report import (
     read_current_navs, read_client_file_csv, read_snapshot_details,
     build_client_reports, generate_client_pdf,
     validate_trade_master, validate_client_csv,
-    set_report_date, get_report_date, CATEGORY_ORDER,
+    get_report_date, CATEGORY_ORDER,
 )
 from custodian_statement import validate_custodian_statement, read_custodian_statement
 import csv as csv_mod
@@ -176,10 +176,6 @@ def upload_file():
             reports_cache['csv_path'] = snap_path
             current_navs, category_overrides = read_client_file_csv(Path(snap_path))
             snap_date, snapshot_holdings, snapshot_cash = read_snapshot_details(Path(snap_path))
-            if snap_date:
-                # Value & annualise everything as of the snapshot's holding
-                # date — the date the NAVs actually belong to.
-                set_report_date(snap_date)
             print(f"Snapshot NAVs: {len(current_navs)}, holding date: {snap_date}")
 
         # ---- Resolve the custodian account statement source (optional) ----
@@ -243,8 +239,11 @@ def upload_file():
             except Exception as e:
                 return jsonify({'error': f'Could not fetch the BSE 500 benchmark from Google Sheets: {e}'}), 400
 
-            # Current NAV precedence (highest wins): custodian snapshot Unit Price
-            # > live Google Sheets > local Current_NAVs.xlsx > latest txn NAV (inside build_client_reports).
+            # Current NAV precedence (highest wins): live Google Sheets
+            # > custodian snapshot Unit Price > local Current_NAVs.xlsx
+            # > latest txn NAV (inside build_client_reports).
+            # Live wins because the CSV snapshot is days old; the Google Sheet
+            # has today's NAVs.  The CSV still provides authoritative *units*.
             snapshot_navs, snapshot_categories = current_navs, category_overrides
             try:
                 live_navs, gsheet_warnings = gsheet_data.get_live_current_navs()
@@ -252,7 +251,7 @@ def upload_file():
                 live_navs, gsheet_warnings = {}, [str(e)]
             local_navs, local_categories = read_current_navs(Path(__file__).resolve().parent / "Current_NAVs.xlsx")
 
-            current_navs = {**local_navs, **live_navs, **snapshot_navs}
+            current_navs = {**local_navs, **snapshot_navs, **live_navs}
             category_overrides = {
                 **local_categories,
                 **gsheet_data.get_category_overrides(),
@@ -272,6 +271,7 @@ def upload_file():
             reports_cache['reports'] = reports
             reports_cache['bse_prices'] = bse_prices
             reports_cache['file_path'] = xlsx_path
+            reports_cache['current_navs'] = current_navs
 
             valid_reports = [r for r in reports if r.cost_value > 0]
             total_portfolio_value = sum(r.current_value for r in valid_reports)
@@ -525,7 +525,7 @@ def get_consolidated():
         return jsonify({'error': 'No client holdings snapshot (CSV) was uploaded. Upload the client file to see the consolidated view.'}), 400
     try:
         from compute_consolidated import compute_consolidated
-        return jsonify(compute_consolidated(Path(csv_path)))
+        return jsonify(compute_consolidated(Path(csv_path), current_navs=reports_cache.get('current_navs')))
     except Exception as e:
         import traceback
         traceback.print_exc()

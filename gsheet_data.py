@@ -28,7 +28,7 @@ GSHEET_IDS = {
 BENCHMARK_SOURCE = "equity"  # the equity sheet also carries the BSE 500 series
 BENCHMARK_COLUMN = "Benchmark"
 
-_CACHE_TTL_SECONDS = 600
+_CACHE_TTL_SECONDS = 120
 _cache: dict[str, tuple[float, list[list[str]]]] = {}
 _mapping_cache: tuple[float, list[dict]] | None = None
 _MAPPING_TTL_SECONDS = 30
