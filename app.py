@@ -291,6 +291,26 @@ def upload_file():
                 for i, r in enumerate(reports) if r.cost_value > 0
             ]
 
+        # --- Detect unmapped funds (ISINs in the CSV but not in fund_mapping) ---
+        unmapped_funds: list[dict] = []
+        if snap_path:
+            mapped_isins = {r["isin"] for r in gsheet_data.load_fund_mapping()}
+            seen: set[str] = set()
+            with open(snap_path, newline="", encoding="utf-8-sig") as f:
+                for row in csv_mod.DictReader(f):
+                    isin = (row.get("ISIN") or "").strip()
+                    scheme = (row.get("SYMBOLNAME") or "").strip()
+                    symbol = (row.get("SYMBOLCODE") or "").strip()
+                    if not isin or isin in mapped_isins or isin in seen:
+                        continue
+                    if symbol.upper() == "CASH":
+                        continue
+                    seen.add(isin)
+                    unmapped_funds.append({"isin": isin, "scheme": scheme})
+            if unmapped_funds:
+                print(f"Unmapped funds ({len(unmapped_funds)}): "
+                      + ", ".join(f'{u["scheme"]} ({u["isin"]})' for u in unmapped_funds))
+
         has_any_master = bool(xlsx_path)
         has_any_snap = bool(snap_path)
         reports_cache['upload_time'] = datetime.now().isoformat()
@@ -301,6 +321,7 @@ def upload_file():
             'has_master': has_any_master,
             'has_snapshot': has_any_snap,
             'has_custodian': bool(custodian_data),
+            'unmapped_funds': unmapped_funds,
             'message': f'Loaded {len(client_list)} clients successfully'
         })
 

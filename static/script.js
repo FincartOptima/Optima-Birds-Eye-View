@@ -136,6 +136,10 @@ async function processUpload() {
 
         initializeUI();
         hideLoading();
+
+        if (data.unmapped_funds && data.unmapped_funds.length > 0) {
+            showUnmappedAlert(data.unmapped_funds);
+        }
     } catch (error) {
         hideLoading();
         showError(error.message);
@@ -1032,6 +1036,56 @@ function updateAdjustChart() {
     adjustPieChart.data.datasets[0].backgroundColor =
         items.map((_, i) => ADJUST_PALETTE[i % ADJUST_PALETTE.length]);
     adjustPieChart.update('none');
+}
+
+// ============================================================
+// Unmapped Funds Alert
+// ============================================================
+
+const GSHEET_URLS = {
+    equity: 'https://docs.google.com/spreadsheets/d/1pwbi3aQZOfVLvNE-Ap4PMH2vjeZ0xTfwdgcZoLMFRBU/edit',
+    debt:   'https://docs.google.com/spreadsheets/d/12RQocyRpcgtgGx_TG2K_25K9Y-h2aGvhswDv_AQx_HI/edit',
+    gold:   'https://docs.google.com/spreadsheets/d/1_RmaSWHumu-Mg3IGDO41VpZM6SSc51NQzcIMZJDt-Xg/edit',
+    cash:   'https://docs.google.com/spreadsheets/d/135cjqAJK7yBp8oM-hIp8WvLmdLJmlHicb05Y7J5IfMg/edit',
+};
+
+function showUnmappedAlert(funds) {
+    const container = document.getElementById('unmappedAlert');
+    const fundRows = funds.map(f =>
+        `<tr><td><code>${f.isin}</code></td><td>${f.scheme}</td></tr>`
+    ).join('');
+
+    const sheetLinks = Object.entries(GSHEET_URLS).map(([name, url]) =>
+        `<a href="${url}" target="_blank" rel="noopener">${name.charAt(0).toUpperCase() + name.slice(1)} Sheet</a>`
+    ).join(' · ');
+
+    container.innerHTML = `
+        <div class="unmapped-banner">
+            <div class="unmapped-header">
+                <span class="unmapped-icon">⚠</span>
+                <strong>${funds.length} unmapped fund${funds.length > 1 ? 's' : ''} detected</strong>
+                <button class="unmapped-dismiss" onclick="dismissUnmappedAlert()" title="Dismiss">✕</button>
+            </div>
+            <p class="unmapped-desc">
+                The following fund${funds.length > 1 ? 's are' : ' is'} in the uploaded CSV but not in
+                <code>fund_mapping.csv</code>. Live NAVs will <strong>not</strong> be fetched for
+                ${funds.length > 1 ? 'them' : 'it'} until mapped.
+            </p>
+            <table class="unmapped-table">
+                <thead><tr><th>ISIN</th><th>Scheme Name</th></tr></thead>
+                <tbody>${fundRows}</tbody>
+            </table>
+            <p class="unmapped-action">
+                <strong>To fix:</strong> Add a column for each fund in the appropriate Google Sheet, then
+                add the ISIN → column mapping in <code>fund_mapping.csv</code>.
+            </p>
+            <p class="unmapped-links">${sheetLinks}</p>
+        </div>`;
+    container.style.display = 'block';
+}
+
+function dismissUnmappedAlert() {
+    document.getElementById('unmappedAlert').style.display = 'none';
 }
 
 // ============================================================

@@ -1222,3 +1222,110 @@ body {
         padding: 8px 5px;
     }
 }
+
+/* ============================================================
+   Unmapped Funds Alert Banner
+   ============================================================ */
+
+.unmapped-banner {
+    background: #FFF8E1;
+    border: 1px solid #F9A825;
+    border-left: 4px solid #F9A825;
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 0 0 16px 0;
+}
+
+.unmapped-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.95rem;
+    color: #5D4037;
+}
+
+.unmapped-icon {
+    font-size: 1.2rem;
+}
+
+.unmapped-dismiss {
+    margin-left: auto;
+    background: none;
+    border: none;
+    font-size: 1.1rem;
+    cursor: pointer;
+    color: #8D6E63;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.unmapped-dismiss:hover {
+    background: rgba(0,0,0,0.08);
+}
+
+.unmapped-desc {
+    margin: 8px 0;
+    font-size: 0.85rem;
+    color: #5D4037;
+    line-height: 1.5;
+}
+
+.unmapped-desc code {
+    background: rgba(0,0,0,0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.82rem;
+}
+
+.unmapped-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 0.82rem;
+}
+
+.unmapped-table th {
+    text-align: left;
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.05);
+    color: #5D4037;
+    font-weight: 600;
+}
+
+.unmapped-table td {
+    padding: 5px 10px;
+    border-top: 1px solid rgba(0,0,0,0.08);
+    color: #4E342E;
+}
+
+.unmapped-table code {
+    font-size: 0.8rem;
+    color: #BF360C;
+}
+
+.unmapped-action {
+    margin: 10px 0 6px;
+    font-size: 0.85rem;
+    color: #5D4037;
+}
+
+.unmapped-action code {
+    background: rgba(0,0,0,0.06);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.82rem;
+}
+
+.unmapped-links {
+    font-size: 0.85rem;
+}
+
+.unmapped-links a {
+    color: #1565C0;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.unmapped-links a:hover {
+    text-decoration: underline;
+}
