@@ -1111,6 +1111,42 @@ Governs the tactical shift between equity and gold between reviews.
 - Ratio between 7.5 and 13 → NEUTRAL, no tilt
 > When triggered, take the lowest allocation on the expensive asset and move the excess into the cheaper one. Reverse the tilt when the ratio returns to the neutral band.`;
 
+/* Historical review log from the source Rules.xlsx model (Black & Litterman rules workbook). */
+const RULES_HISTORY = [
+    { date: '1 Jan 2015',  close: 11346.24, roc: 62.42,  profile: 'Conservative', infl: 5.11, gdp: 7.50, pe: 20.10, ratio: 8.80,  note: '' },
+    { date: '2 Nov 2015',  close: 10580.88, roc: 14.93,  profile: 'Moderate',     infl: 5.41, gdp: 7.20, pe: 20.20, ratio: 9.90,  note: '' },
+    { date: '1 Feb 2016',  close: 9206.02,  roc: -8.82,  profile: 'Aggressive',   infl: 5.18, gdp: 8.90, pe: 19.08, ratio: 7.40,  note: 'On the ratios, use lowest on gold and move that to equity' },
+    { date: '1 Aug 2017',  close: 13762.13, roc: 49.49,  profile: 'Moderate',     infl: 3.36, gdp: 6.30, pe: 24.50, ratio: 10.40, note: '' },
+    { date: '1 Aug 2018',  close: null,     roc: null,   profile: 'Moderate',     infl: null, gdp: null, pe: null,  ratio: 13.16, note: 'Move the extra equity back to gold' },
+    { date: '1 Jul 2019',  close: 14324.12, roc: -6.67,  profile: 'Aggressive',   infl: 3.15, gdp: 4.10, pe: 23.90, ratio: 10.13, note: '' },
+    { date: '1 Mar 2020',  close: null,     roc: null,   profile: 'Aggressive',   infl: null, gdp: null, pe: null,  ratio: 7.30,  note: 'Move the extra gold back to equity' },
+    { date: '2 Aug 2021',  close: 23174.23, roc: 58.43,  profile: 'Conservative', infl: 5.30, gdp: 8.40, pe: 26.70, ratio: 12.70, note: '' },
+    { date: '1 Sep 2021',  close: null,     roc: null,   profile: 'Conservative', infl: null, gdp: null, pe: null,  ratio: 13.62, note: 'Move the extra equity back to gold' },
+    { date: '1 Jun 2022',  close: 21324.54, roc: 16.53,  profile: 'Moderate',     infl: 7.01, gdp: 7.20, pe: 26.60, ratio: 11.70, note: '' },
+    { date: '1 Mar 2023',  close: 23160.01, roc: -3.25,  profile: 'Aggressive',   infl: 5.66, gdp: 6.10, pe: 22.30, ratio: 12.30, note: '' },
+    { date: '1 Jul 2024',  close: 37172.81, roc: 56.33,  profile: 'Conservative', infl: 3.54, gdp: 5.40, pe: 23.50, ratio: 15.18, note: 'Maximise gold' },
+    { date: '1 Feb 2025',  close: 31296.85, roc: 16.57,  profile: 'Moderate',     infl: 3.79, gdp: 6.90, pe: 22.04, ratio: 11.18, note: '' },
+    { date: '1 Jan 2026',  close: 35721.27, roc: -3.90,  profile: 'Aggressive',   infl: null, gdp: null, pe: 24.10, ratio: 7.03,  note: 'Move the extra gold back to equity' },
+];
+
+function renderRulesHistory() {
+    const fmt = (v, suffix = '') => (v === null || v === undefined) ? '<span class="text-muted">—</span>' : `${v.toLocaleString('en-IN')}${suffix}`;
+    const badgeClass = p => 'profile-badge profile-' + p.toLowerCase();
+    const rows = RULES_HISTORY.map(r => `
+        <tr>
+            <td>${r.date}</td>
+            <td class="num">${fmt(r.close)}</td>
+            <td class="num">${fmt(r.roc, '%')}</td>
+            <td><span class="${badgeClass(r.profile)}">${r.profile}</span></td>
+            <td class="num">${fmt(r.infl, '%')}</td>
+            <td class="num">${fmt(r.gdp, '%')}</td>
+            <td class="num">${fmt(r.pe)}</td>
+            <td class="num">${fmt(r.ratio)}</td>
+            <td class="rules-history-note">${r.note || '<span class="text-muted">—</span>'}</td>
+        </tr>`).join('');
+    document.getElementById('rulesHistoryTable').innerHTML = rows;
+}
+
 let rulesUnlocked = false;
 
 function getRulesText() {
@@ -1148,6 +1184,7 @@ function renderRulesMarkup(text) {
 }
 
 function loadRules() {
+    renderRulesHistory();
     // Always render the current (read-only) view when the tab is opened.
     if (!rulesUnlocked) {
         document.getElementById('rulesView').innerHTML = renderRulesMarkup(getRulesText());

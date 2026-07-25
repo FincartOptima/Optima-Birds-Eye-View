@@ -1432,3 +1432,38 @@ body {
     outline: none;
     box-shadow: 0 0 0 3px rgba(20, 54, 92, 0.12);
 }
+
+.rules-history-table .text-muted {
+    color: var(--text-light);
+}
+
+.rules-history-note {
+    font-size: 0.85rem;
+    color: var(--text-med);
+    font-style: italic;
+    max-width: 260px;
+}
+
+.profile-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.profile-badge.profile-conservative {
+    background: rgba(192, 57, 43, 0.12);
+    color: var(--danger);
+}
+
+.profile-badge.profile-moderate {
+    background: rgba(197, 146, 46, 0.15);
+    color: var(--gold);
+}
+
+.profile-badge.profile-aggressive {
+    background: rgba(27, 122, 47, 0.12);
+    color: var(--success);
+}
