@@ -1329,3 +1329,106 @@ body {
 .unmapped-links a:hover {
     text-decoration: underline;
 }
+
+/* ============================================================
+   Allocation Rules Tab
+   ============================================================ */
+
+.rules-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+
+.rules-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.rules-lock-status {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-med);
+    padding: 4px 10px;
+    background: var(--light-bg);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.rules-lock-status.unlocked {
+    color: var(--success);
+    background: #EAF7EE;
+    border-color: #A9D8B6;
+}
+
+.rules-view {
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 24px 28px;
+    line-height: 1.6;
+}
+
+.rules-heading {
+    color: var(--navy);
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 22px 0 8px;
+    padding-bottom: 6px;
+    border-bottom: 2px solid var(--light-blue);
+}
+
+.rules-heading:first-child {
+    margin-top: 0;
+}
+
+.rules-para {
+    color: var(--text-dark);
+    font-size: 0.92rem;
+    margin: 6px 0;
+}
+
+.rules-list {
+    margin: 8px 0 8px 4px;
+    padding-left: 22px;
+}
+
+.rules-list li {
+    color: var(--text-dark);
+    font-size: 0.92rem;
+    margin: 5px 0;
+}
+
+.rules-note {
+    background: var(--light-blue);
+    border-left: 4px solid var(--navy);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 10px 0;
+    font-size: 0.88rem;
+    color: var(--text-med);
+}
+
+.rules-editor {
+    width: 100%;
+    min-height: 420px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.9rem;
+    line-height: 1.5;
+    color: var(--text-dark);
+    background: var(--white);
+    border: 1px solid var(--navy);
+    border-radius: 8px;
+    padding: 18px 20px;
+    resize: vertical;
+}
+
+.rules-editor:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(20, 54, 92, 0.12);
+}

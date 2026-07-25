@@ -217,6 +217,7 @@ function switchTab(tab) {
         master:       { btn: 'tabMasterBtn',       content: 'masterTabContent' },
         consolidated: { btn: 'tabConsolidatedBtn', content: 'consolidatedTabContent' },
         failed:       { btn: 'tabFailedBtn',       content: 'failedTabContent' },
+        rules:        { btn: 'tabRulesBtn',        content: 'rulesTabContent' },
     };
 
     for (const [key, ids] of Object.entries(tabs)) {
@@ -235,6 +236,7 @@ function switchTab(tab) {
     if (tab === 'master' && !masterDataLoaded) loadMasterData();
     if (tab === 'consolidated' && !consolidatedLoaded) loadConsolidated();
     if (tab === 'failed' && !failedDataLoaded) loadFailedTransactions();
+    if (tab === 'rules') loadRules();
 }
 
 // ============================================================
@@ -1086,6 +1088,113 @@ function showUnmappedAlert(funds) {
 
 function dismissUnmappedAlert() {
     document.getElementById('unmappedAlert').style.display = 'none';
+}
+
+// ============================================================
+// Allocation Rules Tab
+// ============================================================
+
+const RULES_STORAGE_KEY = 'bev_allocation_rules';
+const RULES_PASSWORD = 'Password';
+
+const DEFAULT_RULES = `# Base Risk Profile — Valuation (Nifty P/E)
+Sets the default equity / gold / debt risk stance at each review.
+- Nifty P/E below 20 → move to AGGRESSIVE (markets have historically given better returns from lower valuations)
+- Nifty P/E between 20 and 50 → MODERATE
+- Nifty P/E above 50 → CONSERVATIVE
+> Trend reference: 200 EDMA (exponential daily moving average) is read alongside valuation when setting the profile.
+
+# Tactical Tilt — BSE 500 / Gold (XAU) Ratio
+Governs the tactical shift between equity and gold between reviews.
+- Ratio below 7.5 → start to MAXIMISE EQUITY (move gold → equity)
+- Ratio above 13 → start to MAXIMISE GOLD (move equity → gold)
+- Ratio between 7.5 and 13 → NEUTRAL, no tilt
+> When triggered, take the lowest allocation on the expensive asset and move the excess into the cheaper one. Reverse the tilt when the ratio returns to the neutral band.`;
+
+let rulesUnlocked = false;
+
+function getRulesText() {
+    return localStorage.getItem(RULES_STORAGE_KEY) || DEFAULT_RULES;
+}
+
+/* Light line-based renderer: '# ' heading, '- ' bullet, '> ' note, else paragraph. */
+function renderRulesMarkup(text) {
+    const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lines = text.split('\n');
+    let html = '';
+    let inList = false;
+    const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+
+    for (const raw of lines) {
+        const line = raw.trimEnd();
+        if (line.startsWith('# ')) {
+            closeList();
+            html += `<h4 class="rules-heading">${esc(line.slice(2))}</h4>`;
+        } else if (line.startsWith('- ')) {
+            if (!inList) { html += '<ul class="rules-list">'; inList = true; }
+            html += `<li>${esc(line.slice(2))}</li>`;
+        } else if (line.startsWith('> ')) {
+            closeList();
+            html += `<p class="rules-note">${esc(line.slice(2))}</p>`;
+        } else if (line.trim() === '') {
+            closeList();
+        } else {
+            closeList();
+            html += `<p class="rules-para">${esc(line)}</p>`;
+        }
+    }
+    closeList();
+    return html;
+}
+
+function loadRules() {
+    // Always render the current (read-only) view when the tab is opened.
+    if (!rulesUnlocked) {
+        document.getElementById('rulesView').innerHTML = renderRulesMarkup(getRulesText());
+        document.getElementById('rulesView').style.display = 'block';
+        document.getElementById('rulesEditor').style.display = 'none';
+    }
+}
+
+function unlockRules() {
+    const entered = window.prompt('Enter the password to edit the allocation rules:');
+    if (entered === null) return;               // cancelled
+    if (entered !== RULES_PASSWORD) {
+        showError('Incorrect password. The rules remain locked.');
+        return;
+    }
+    rulesUnlocked = true;
+    const editor = document.getElementById('rulesEditor');
+    editor.value = getRulesText();
+    editor.style.display = 'block';
+    document.getElementById('rulesView').style.display = 'none';
+    document.getElementById('rulesEditBtn').style.display = 'none';
+    document.getElementById('rulesSaveBtn').style.display = 'inline-block';
+    document.getElementById('rulesCancelBtn').style.display = 'inline-block';
+    document.getElementById('rulesLockStatus').textContent = '🔓 Editing';
+    document.getElementById('rulesLockStatus').classList.add('unlocked');
+}
+
+function saveRules() {
+    const text = document.getElementById('rulesEditor').value;
+    localStorage.setItem(RULES_STORAGE_KEY, text);
+    lockRules();
+}
+
+function cancelRulesEdit() {
+    lockRules();
+}
+
+function lockRules() {
+    rulesUnlocked = false;
+    document.getElementById('rulesView').innerHTML = renderRulesMarkup(getRulesText());
+    document.getElementById('rulesView').style.display = 'block';
+    document.getElementById('rulesEditor').style.display = 'none';
+    document.getElementById('rulesEditBtn').style.display = 'inline-block';
+    document.getElementById('rulesSaveBtn').style.display = 'none';
+    document.getElementById('rulesCancelBtn').style.display = 'none';
+    document.getElementById('rulesLockStatus').textContent = '🔒 Locked';
+    document.getElementById('rulesLockStatus').classList.remove('unlocked');
 }
 
 // ============================================================

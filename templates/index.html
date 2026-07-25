@@ -111,6 +111,7 @@
                 <button class="tab-btn" id="tabMasterBtn" onclick="switchTab('master')">Master Dashboard</button>
                 <button class="tab-btn" id="tabConsolidatedBtn" onclick="switchTab('consolidated')">Client Consolidated</button>
                 <button class="tab-btn" id="tabFailedBtn" onclick="switchTab('failed')">Failed Transactions</button>
+                <button class="tab-btn" id="tabRulesBtn" onclick="switchTab('rules')">Allocation Rules</button>
             </div>
 
             <!-- CLIENT TAB CONTENT -->
@@ -380,6 +381,32 @@
                     </section>
                 </div>
             </div><!-- /#failedTabContent -->
+
+            <!-- ALLOCATION RULES TAB CONTENT -->
+            <div id="rulesTabContent" style="display:none;">
+                <div class="master-content">
+                    <section class="section">
+                        <div class="rules-toolbar">
+                            <div>
+                                <h3 class="section-title">Tactical Asset Allocation Rules</h3>
+                                <p class="section-subtitle">The rule set that governs the base risk profile and the gold &harr; equity tilt. Read-only by default.</p>
+                            </div>
+                            <div class="rules-actions">
+                                <span class="rules-lock-status" id="rulesLockStatus">🔒 Locked</span>
+                                <button class="btn btn-secondary" id="rulesEditBtn" onclick="unlockRules()">Edit</button>
+                                <button class="btn btn-success" id="rulesSaveBtn" onclick="saveRules()" style="display:none;">Save</button>
+                                <button class="btn btn-secondary" id="rulesCancelBtn" onclick="cancelRulesEdit()" style="display:none;">Cancel</button>
+                            </div>
+                        </div>
+
+                        <!-- Read-only rendered view -->
+                        <div id="rulesView" class="rules-view"></div>
+
+                        <!-- Editable raw view (hidden until unlocked) -->
+                        <textarea id="rulesEditor" class="rules-editor" style="display:none;" spellcheck="false"></textarea>
+                    </section>
+                </div>
+            </div><!-- /#rulesTabContent -->
 
         </div><!-- /#mainSection -->
 
