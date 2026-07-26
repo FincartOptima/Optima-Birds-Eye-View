@@ -1104,6 +1104,13 @@ Sets the default equity / gold / debt risk stance at each review.
 - Nifty P/E above 50 → CONSERVATIVE
 > Trend reference: 200 EDMA (exponential daily moving average) is read alongside valuation when setting the profile.
 
+# Momentum Confirmation — Rate of Change (ROC)
+Confirms or overrides the valuation-based profile using the BSE 500's rate of change.
+- ROC below 0% → move to AGGRESSIVE (market has pulled back, buy the dip)
+- ROC above 50% → move to CONSERVATIVE (market has rallied hard, take profits)
+- ROC falling from above 20% back down below 20% → shift to MODERATE
+> Between 0% and 50%, the default stance is MODERATE; the 20% crossing marks the point where fading momentum triggers a de-risking shift.
+
 # Tactical Tilt — BSE 500 / Gold (XAU) Ratio
 Governs the tactical shift between equity and gold between reviews.
 - Ratio below 7.5 → start to MAXIMISE EQUITY (move gold → equity)
