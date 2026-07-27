@@ -69,6 +69,18 @@ def _client_returns(report, nav_history_by_isin: dict, report_date: datetime) ->
     return result
 
 
+def _bse_simple_return_from_inception(bse_prices: list[tuple], inception_date: datetime, report_date: datetime) -> float | None:
+    if not bse_prices or inception_date is None:
+        return None
+    dates = [p[0] for p in bse_prices]
+    values = [p[1] for p in bse_prices]
+    v_start = _value_on_or_before(dates, values, inception_date)
+    v_end = _value_on_or_before(dates, values, report_date)
+    if v_start and v_end and v_start > 0:
+        return round((v_end / v_start - 1) * 100, 2)
+    return None
+
+
 def get_client_performance(report, bse_prices: list[tuple], report_date: datetime) -> dict:
     mapping = gsheet_data.load_fund_mapping()
     isin_to_fund = {r['isin']: r['sheet_fund_name'] for r in mapping if r['sheet_fund_name']}
@@ -82,15 +94,24 @@ def get_client_performance(report, bse_prices: list[tuple], report_date: datetim
     client_ret = _client_returns(report, nav_history_by_isin, report_date)
     bse_ret = _bse_returns(bse_prices, report_date)
 
+    if report.custodian and report.custodian.deposits:
+        inception_date = report.custodian.deposits[0].date
+    elif report.initial_date:
+        inception_date = report.initial_date
+    elif report.transactions:
+        inception_date = min(t.statement_date for t in report.transactions)
+    else:
+        inception_date = None
+
     to_pct = lambda v: round(v * 100, 2) if v is not None else None
     return {
         'period_labels': PERIOD_LABELS,
         'client_returns': client_ret,
         'bse_returns': bse_ret,
         'since_inception': {
-            'client_xirr': to_pct(report.xirr),
             'client_simple_return': to_pct(report.simple_return),
-            'bse_xirr': to_pct(report.benchmark_xirr),
+            'bse_simple_return': _bse_simple_return_from_inception(bse_prices, inception_date, report_date),
+            'inception_date': inception_date.strftime('%d %b %Y') if inception_date else None,
         },
         'report_date': report_date.strftime('%d %b %Y'),
     }

@@ -293,6 +293,7 @@ function renderClientPerformance(data) {
     document.getElementById('perfReportDate').textContent = data.report_date || '—';
 
     const si = data.since_inception;
+    const inceptionSub = si.inception_date ? `Since ${si.inception_date}` : 'Since inception';
     const kpi = (label, value, sub) => `
         <div class="fs-kpi">
             <span class="fs-kpi-label">${label}</span>
@@ -300,9 +301,8 @@ function renderClientPerformance(data) {
             <span class="fs-kpi-sub">${sub}</span>
         </div>`;
     document.getElementById('perfInceptionKpis').innerHTML =
-        kpi('Simple Return (Since Inception)', si.client_simple_return, 'Non-annualised') +
-        kpi('XIRR (Since Inception)', si.client_xirr, 'Annualised, money-weighted') +
-        kpi('BSE 500 XIRR (Since Inception)', si.bse_xirr, 'Benchmark, same cashflow dates');
+        kpi('Client Simple Return', si.client_simple_return, inceptionSub) +
+        kpi('BSE 500 Simple Return', si.bse_simple_return, inceptionSub);
 
     const periods = data.period_labels;
     document.getElementById('perfTableHead').innerHTML = `
