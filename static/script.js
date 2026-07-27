@@ -277,15 +277,15 @@ async function loadClient() {
 
 async function loadClientPerformance() {
     if (currentClientId === null) return;
-    const tbody = document.getElementById('perfTableBody');
-    tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading performance data...</td></tr>';
+    const kpis = document.getElementById('perfInceptionKpis');
+    kpis.innerHTML = '<div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>';
     try {
         const response = await fetch(`/api/client/${currentClientId}/performance`);
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Failed to load performance data');
         renderClientPerformance(payload);
     } catch (error) {
-        tbody.innerHTML = `<tr><td colspan="6" class="loading">${error.message}</td></tr>`;
+        kpis.innerHTML = `<div class="fs-kpi"><span class="fs-kpi-label">${error.message}</span></div>`;
     }
 }
 
@@ -303,23 +303,6 @@ function renderClientPerformance(data) {
     document.getElementById('perfInceptionKpis').innerHTML =
         kpi('Client Simple Return', si.client_simple_return, inceptionSub) +
         kpi('BSE 500 Simple Return', si.bse_simple_return, inceptionSub);
-
-    const periods = data.period_labels;
-    document.getElementById('perfTableHead').innerHTML = `
-        <tr>
-            <th style="min-width:180px">Portfolio</th>
-            ${periods.map(p => `<th style="min-width:80px;text-align:right">${p}</th>`).join('')}
-        </tr>`;
-
-    document.getElementById('perfTableBody').innerHTML = `
-        <tr>
-            <td><strong>${data.name}</strong></td>
-            ${periods.map(p => returnCell(data.client_returns[p])).join('')}
-        </tr>
-        <tr class="bse-row">
-            <td><strong>BSE 500 (Benchmark)</strong></td>
-            ${periods.map(p => returnCell(data.bse_returns[p])).join('')}
-        </tr>`;
 }
 
 // ============================================================
