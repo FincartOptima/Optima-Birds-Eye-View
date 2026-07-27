@@ -104,7 +104,7 @@ async function processUpload() {
         return;
     }
     if (xlsxFile && !xlsxFile.name.toLowerCase().match(/\.xlsx?$/)) {
-        showError('The Trade Allocation Master must be an Excel file (.xlsx or .xls).');
+        showError('The tradebook must be an Excel file (.xlsx or .xls).');
         return;
     }
     if (custodianFile && !custodianFile.name.toLowerCase().endsWith('.xls')) {
@@ -210,7 +210,7 @@ function setupClientSearch() {
 
 function switchTab(tab) {
     if ((tab === 'client' || tab === 'performance' || tab === 'master' || tab === 'failed') && !hasMasterFile) {
-        showError('This view needs the Trade Allocation Master file. Re-upload including the Excel file to enable it.');
+        showError('This view needs the tradebook. Re-upload including the tradebook Excel file to enable it.');
         return;
     }
     activeTab = tab;
@@ -305,7 +305,7 @@ function renderClientPerformance(data) {
         kpi('BSE 500 Simple Return', si.bse_simple_return, `${inceptionSub} · ${si.bse_methodology || ''}`);
 
     document.getElementById('perfDisclosure').innerHTML =
-        `<strong>Methodology.</strong> Client Simple Return = (Current Value &minus; Cost Basis) &divide; Cost Basis, where Cost Basis is the custodian's cost of currently-held units plus uninvested cash. ` +
+        `<strong>Methodology.</strong> Client Simple Return = (Current Value &minus; Cost Basis) &divide; Cost Basis, where Cost Basis is the cost of currently-held units plus uninvested cash, as recorded in the client file. ` +
         `BSE 500 Simple Return simulates the same deposit / withdrawal schedule into the BSE 500 index. ` +
         `<strong>Benchmark note.</strong> BSE 500 is a pure-equity index; the client portfolio is multi-asset (equity + gold + debt + cash), so material divergence in either direction should be expected. ` +
         `For a like-for-like benchmark, a composite index matching the target asset mix would be more appropriate.`;
@@ -881,7 +881,7 @@ function renderFailedOverview() {
 
     if (!failedData.overview.length) {
         document.getElementById('failedTableBody').innerHTML =
-            '<tr><td colspan="3" class="loading">No failed transactions — every trade master row has a Value.</td></tr>';
+            '<tr><td colspan="3" class="loading">No failed transactions — every tradebook row has a Value.</td></tr>';
         return;
     }
 

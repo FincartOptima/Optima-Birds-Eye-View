@@ -143,7 +143,7 @@ def upload_file():
     if has_snap and not snap.filename.lower().endswith('.csv'):
         return jsonify({'error': 'The client holdings snapshot must be a .csv file'}), 400
     if has_custodian and not custodian_file.filename.lower().endswith('.xls'):
-        return jsonify({'error': 'The custodian portfolio statement must be an old-format Excel file (.xls)'}), 400
+        return jsonify({'error': 'The account statement must be an old-format Excel file (.xls)'}), 400
 
     if not has_xlsx and not has_snap and not has_custodian and not nav_url and not master_url:
         return jsonify({'error': 'No file or Google Sheet URL provided.'}), 400
@@ -186,7 +186,7 @@ def upload_file():
             custodian_file.save(custodian_path)
             custodian_errors = validate_custodian_statement(Path(custodian_path))
             if custodian_errors:
-                return jsonify({'error': 'Invalid custodian account statement format:\n• ' + '\n• '.join(custodian_errors)}), 400
+                return jsonify({'error': 'Invalid account statement format:\n• ' + '\n• '.join(custodian_errors)}), 400
 
             # Build CODE → UCC mapping from the client CSV (if uploaded)
             code_to_ucc: dict[str, str] = {}

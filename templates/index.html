@@ -30,8 +30,8 @@
                 <div class="upload-rows">
                     <div class="upload-row">
                         <div class="upload-row-label">
-                            <strong>Client Holdings File</strong> <span class="req">required</span>
-                            <small>Custodian snapshot (.csv) — drives gain/loss &amp; consolidated views</small>
+                            <strong>Client File</strong> <span class="req">required</span>
+                            <small>Client holdings snapshot (.csv) — drives gain/loss &amp; consolidated views</small>
                         </div>
                         <input type="file" id="csvInput" accept=".csv" style="display:none;">
                         <button class="btn btn-secondary" onclick="document.getElementById('csvInput').click()">Choose CSV</button>
@@ -45,8 +45,8 @@
 
                     <div class="upload-row">
                         <div class="upload-row-label">
-                            <strong>Trade Allocation Master</strong> <span class="opt">optional</span>
-                            <small>Excel (.xlsx) — enables XIRR &amp; the performance dashboard</small>
+                            <strong>Tradebook</strong> <span class="opt">optional</span>
+                            <small>Trade Allocation Master (.xlsx) — enables XIRR &amp; the performance dashboard</small>
                         </div>
                         <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none;">
                         <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">Choose Excel</button>
@@ -60,7 +60,7 @@
 
                     <div class="upload-row">
                         <div class="upload-row-label">
-                            <strong>Custodian Account Statement</strong> <span class="opt">optional</span>
+                            <strong>Account Statement</strong> <span class="opt">optional</span>
                             <small>Account statement (.xls) — provides real deposit dates for accurate XIRR &amp; cash calculation</small>
                         </div>
                         <input type="file" id="custodianInput" accept=".xls" style="display:none;">
@@ -159,7 +159,7 @@
                             <span class="fs-kpi-sub" id="benchmarkXIRR">BSE 500: N/A</span>
                         </div>
                     </div>
-                    <p class="fs-note"><strong>Invested</strong> is the total corpus deposited with the custodian. <strong>Gain/Loss</strong> = Current Value &minus; Invested (net of all fees), so <strong>Simple Return</strong> is the same figure in % (non-annualised). <strong>XIRR</strong> is the annualised money-weighted return accounting for the timing of each deposit, benchmarked to BSE 500. All values are as of the custodian snapshot date shown above.</p>
+                    <p class="fs-note"><strong>Invested</strong> is the cost basis of currently-held units plus uninvested cash, from the client file. <strong>Gain/Loss</strong> = Current Value &minus; Invested (net of all fees), so <strong>Simple Return</strong> is the same figure in % (non-annualised). <strong>XIRR</strong> is the annualised money-weighted return accounting for the timing of each deposit, benchmarked to BSE 500. All values are as of the client file's snapshot date shown above.</p>
 
                     <!-- About Section -->
                     <section class="section">

@@ -83,9 +83,9 @@ def _bse_return_cashflow_matched(bse_prices: list[tuple], cashflows: list[tuple[
 
 
 _METHODOLOGY_LABELS = {
-    'custodian_deposits': 'Cash-flow matched (custodian deposits)',
-    'trade_master_transactions': 'Cash-flow matched (trade master transactions)',
-    'lump_sum_at_inception': 'Lump sum at account opening (cash-flow data not available)',
+    'custodian_deposits': 'Cash-flow matched (deposits from the account statement)',
+    'trade_master_transactions': 'Cash-flow matched (transactions from the tradebook)',
+    'lump_sum_at_inception': 'Lump sum at account opening (no tradebook or account statement uploaded)',
     'unavailable': 'Not available',
 }
 
