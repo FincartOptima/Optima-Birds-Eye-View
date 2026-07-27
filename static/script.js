@@ -301,8 +301,14 @@ function renderClientPerformance(data) {
             <span class="fs-kpi-sub">${sub}</span>
         </div>`;
     document.getElementById('perfInceptionKpis').innerHTML =
-        kpi('Client Simple Return', si.client_simple_return, inceptionSub) +
-        kpi('BSE 500 Simple Return', si.bse_simple_return, inceptionSub);
+        kpi('Client Simple Return', si.client_simple_return, `${inceptionSub} · Cost basis ${formatCurrency(si.cost_basis)}`) +
+        kpi('BSE 500 Simple Return', si.bse_simple_return, `${inceptionSub} · ${si.bse_methodology || ''}`);
+
+    document.getElementById('perfDisclosure').innerHTML =
+        `<strong>Methodology.</strong> Client Simple Return = (Current Value &minus; Cost Basis) &divide; Cost Basis, where Cost Basis is the custodian's cost of currently-held units plus uninvested cash. ` +
+        `BSE 500 Simple Return simulates the same deposit / withdrawal schedule into the BSE 500 index. ` +
+        `<strong>Benchmark note.</strong> BSE 500 is a pure-equity index; the client portfolio is multi-asset (equity + gold + debt + cash), so material divergence in either direction should be expected. ` +
+        `For a like-for-like benchmark, a composite index matching the target asset mix would be more appropriate.`;
 }
 
 // ============================================================

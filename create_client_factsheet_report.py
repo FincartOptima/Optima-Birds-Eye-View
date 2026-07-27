@@ -836,10 +836,15 @@ def build_client_reports(
             )
         report.top_holdings = [holding for holding in report.holdings if holding.current_value > 0][:5]
 
-        # Build XIRR cashflows using real deposit dates from the account
-        # statement when available; fall back to the Master sheet's single
-        # lump-sum figure otherwise.
-        effective_initial_investment = report.initial_investment
+        # Build XIRR cashflows. Data-source priority (best → worst) is set to
+        # avoid the well-known SEBI trap of using the Trade Master's stale
+        # "Initial Investment" field, which for clients with staggered deposits
+        # can produce absurd XIRR values (e.g. 2869% when current value is
+        # compared to a one-time deposit amount recorded on day 1):
+        #   1. Custodian bank deposits (real dated flows, always most accurate)
+        #   2. Trade Master transactions (accurate for fund flows)
+        #   3. Cost Basis as single lump sum at account opening (approximation)
+        effective_initial_investment = 0.0
         effective_initial_date = report.initial_date
         portfolio_cashflows: list[tuple[datetime, float]] = []
 
@@ -849,30 +854,46 @@ def build_client_reports(
                 portfolio_cashflows.append((dep.date, -dep.amount))
             effective_initial_investment = sum(d.amount for d in dated_deposits)
             effective_initial_date = dated_deposits[0].date
-        elif effective_initial_investment > 0:
-            start_date = effective_initial_date or (
-                min(transaction.statement_date for transaction in client_transactions) if client_transactions else REPORT_DATE
-            )
-            portfolio_cashflows.append((start_date, -effective_initial_investment))
-        else:
+        elif client_transactions:
             for transaction in client_transactions:
                 amount = transaction.amount if transaction.transaction_type == "Redemption" else -transaction.amount
                 portfolio_cashflows.append((transaction.statement_date, amount))
+            effective_initial_investment = sum(
+                t.amount if t.transaction_type == "Subscription" else -t.amount
+                for t in client_transactions
+            )
+            effective_initial_date = min(t.statement_date for t in client_transactions)
+        elif report.cost_value > 0:
+            effective_initial_investment = report.cost_value
+            effective_initial_date = report.initial_date or REPORT_DATE
+            portfolio_cashflows.append((effective_initial_date, -effective_initial_investment))
 
         if report.current_value:
             portfolio_cashflows.append((REPORT_DATE, report.current_value))
         report.xirr = xirr(portfolio_cashflows)
 
-        # Invested = total corpus deposited (custodian contribution when
-        # available). Gain/Loss and Simple Return both measure against it, so
-        # the KPI strip is internally consistent: Gain% == Simple Return.
-        report.contribution = effective_initial_investment if effective_initial_investment > 0 else report.cost_value
-        report.net_gain = report.current_value - report.contribution
-        report.simple_return = (report.net_gain / report.contribution) if report.contribution > 0 else None
+        # SEBI-defensible: Simple Return = (Current Value − Cost Basis) / Cost Basis.
+        # Cost Basis (report.cost_value) is the custodian's actual cost of currently-
+        # held units + uninvested cash, which is the ground truth for money currently
+        # deployed. The Trade Master's "Initial Investment" field is a one-time value
+        # that ignores later deposits, so using it inflates simple return for clients
+        # with staggered contributions (e.g. cost basis ₹94L but initial_investment
+        # ₹51L → false 86% return). We therefore always use cost_value here.
+        # Gain/Loss and Simple Return remain internally consistent: Gain% == Simple Return.
+        report.contribution = report.cost_value
+        report.net_gain = report.total_pl
+        report.simple_return = (report.total_pl / report.cost_value) if report.cost_value > 0 else None
 
-        report.benchmark_current_value, report.benchmark_xirr = benchmark_value_and_xirr(
-            client_transactions, bse_prices, REPORT_DATE, effective_initial_investment, effective_initial_date
-        )
+        # Benchmark BSE 500 value / XIRR: use per-transaction simulation when
+        # we have real cashflows; fall back to lump sum only when we don't.
+        if client_transactions and not dated_deposits:
+            report.benchmark_current_value, report.benchmark_xirr = benchmark_value_and_xirr(
+                client_transactions, bse_prices, REPORT_DATE, 0.0, None,
+            )
+        else:
+            report.benchmark_current_value, report.benchmark_xirr = benchmark_value_and_xirr(
+                client_transactions, bse_prices, REPORT_DATE, effective_initial_investment, effective_initial_date,
+            )
         client_series = make_client_series(client_transactions, holdings_by_isin, REPORT_DATE)
         benchmark_series = make_benchmark_series(client_transactions, bse_prices, REPORT_DATE)
         benchmark_by_date = {date: value for date, value in benchmark_series}
