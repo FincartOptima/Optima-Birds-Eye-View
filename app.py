@@ -21,6 +21,7 @@ from create_client_factsheet_report import (
 from custodian_statement import validate_custodian_statement, read_custodian_statement
 import csv as csv_mod
 import gsheet_data
+import compute_performance
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB max file size
@@ -431,6 +432,35 @@ def get_client_data(client_id):
     }
 
     return jsonify(client_data)
+
+
+@app.route('/api/client/<int:client_id>/performance')
+def get_client_performance(client_id):
+    """Return the client's point-to-point returns (1D/7D/30D/120D/365D) plus
+    since-inception XIRR, alongside the BSE 500 benchmark for the same
+    windows. Recomputed from live NAV history on every request."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+
+    reports = reports_cache['reports']
+    valid_ids = [i for i, r in enumerate(reports) if r.cost_value > 0]
+
+    if client_id not in valid_ids:
+        return jsonify({'error': 'Invalid client ID'}), 404
+
+    report = reports[client_id]
+    bse_prices = reports_cache.get('bse_prices', [])
+    try:
+        perf = compute_performance.get_client_performance(report, bse_prices, get_report_date())
+    except Exception as e:
+        return jsonify({'error': f'Could not compute performance: {e}'}), 400
+
+    return jsonify({
+        'id': client_id,
+        'name': report.client_name,
+        'ucc': report.ucc,
+        **perf,
+    })
 
 
 @app.route('/api/client/<int:client_id>/download_pdf')

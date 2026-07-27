@@ -173,12 +173,15 @@ function initializeUI() {
 
     // Enable/disable tabs that require the trade master
     const clientBtn = document.getElementById('tabClientBtn');
+    const performanceBtn = document.getElementById('tabPerformanceBtn');
     const masterBtn = document.getElementById('tabMasterBtn');
     const failedBtn = document.getElementById('tabFailedBtn');
     clientBtn.disabled = !hasMasterFile;
+    performanceBtn.disabled = !hasMasterFile;
     masterBtn.disabled = !hasMasterFile;
     failedBtn.disabled = !hasMasterFile;
     clientBtn.classList.toggle('disabled', !hasMasterFile);
+    performanceBtn.classList.toggle('disabled', !hasMasterFile);
     masterBtn.classList.toggle('disabled', !hasMasterFile);
     failedBtn.classList.toggle('disabled', !hasMasterFile);
 
@@ -206,7 +209,7 @@ function setupClientSearch() {
 // ============================================================
 
 function switchTab(tab) {
-    if ((tab === 'client' || tab === 'master' || tab === 'failed') && !hasMasterFile) {
+    if ((tab === 'client' || tab === 'performance' || tab === 'master' || tab === 'failed') && !hasMasterFile) {
         showError('This view needs the Trade Allocation Master file. Re-upload including the Excel file to enable it.');
         return;
     }
@@ -214,6 +217,7 @@ function switchTab(tab) {
 
     const tabs = {
         client:       { btn: 'tabClientBtn',       content: 'clientTabContent' },
+        performance:  { btn: 'tabPerformanceBtn',  content: 'performanceTabContent' },
         master:       { btn: 'tabMasterBtn',       content: 'masterTabContent' },
         consolidated: { btn: 'tabConsolidatedBtn', content: 'consolidatedTabContent' },
         failed:       { btn: 'tabFailedBtn',       content: 'failedTabContent' },
@@ -228,11 +232,12 @@ function switchTab(tab) {
         content.style.display = isActive ? 'block' : 'none';
     }
 
-    // The client/search toolbar only applies to the per-client factsheet
-    const showToolbar = tab === 'client';
+    // The client/search toolbar applies to any per-client view
+    const showToolbar = tab === 'client' || tab === 'performance';
     document.getElementById('toolbarCenter').style.display = showToolbar ? 'flex' : 'none';
     document.getElementById('toolbarRight').style.display  = showToolbar ? 'flex' : 'none';
 
+    if (tab === 'performance') loadClientPerformance();
     if (tab === 'master' && !masterDataLoaded) loadMasterData();
     if (tab === 'consolidated' && !consolidatedLoaded) loadConsolidated();
     if (tab === 'failed' && !failedDataLoaded) loadFailedTransactions();
@@ -258,11 +263,63 @@ async function loadClient() {
         currentClientId = clientId;
         renderClientData();
         hideLoading();
+        if (activeTab === 'performance') loadClientPerformance();
 
     } catch (error) {
         hideLoading();
         showError(error.message);
     }
+}
+
+// ============================================================
+// Performance Tab (per client, vs BSE 500)
+// ============================================================
+
+async function loadClientPerformance() {
+    if (currentClientId === null) return;
+    const tbody = document.getElementById('perfTableBody');
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">Loading performance data...</td></tr>';
+    try {
+        const response = await fetch(`/api/client/${currentClientId}/performance`);
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Failed to load performance data');
+        renderClientPerformance(payload);
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="6" class="loading">${error.message}</td></tr>`;
+    }
+}
+
+function renderClientPerformance(data) {
+    document.getElementById('perfReportDate').textContent = data.report_date || '—';
+
+    const si = data.since_inception;
+    const kpi = (label, value, sub) => `
+        <div class="fs-kpi">
+            <span class="fs-kpi-label">${label}</span>
+            <span class="fs-kpi-value ${value != null ? glClass(value) : ''}">${value != null ? signedPct(value) : 'N/A'}</span>
+            <span class="fs-kpi-sub">${sub}</span>
+        </div>`;
+    document.getElementById('perfInceptionKpis').innerHTML =
+        kpi('Simple Return (Since Inception)', si.client_simple_return, 'Non-annualised') +
+        kpi('XIRR (Since Inception)', si.client_xirr, 'Annualised, money-weighted') +
+        kpi('BSE 500 XIRR (Since Inception)', si.bse_xirr, 'Benchmark, same cashflow dates');
+
+    const periods = data.period_labels;
+    document.getElementById('perfTableHead').innerHTML = `
+        <tr>
+            <th style="min-width:180px">Portfolio</th>
+            ${periods.map(p => `<th style="min-width:80px;text-align:right">${p}</th>`).join('')}
+        </tr>`;
+
+    document.getElementById('perfTableBody').innerHTML = `
+        <tr>
+            <td><strong>${data.name}</strong></td>
+            ${periods.map(p => returnCell(data.client_returns[p])).join('')}
+        </tr>
+        <tr class="bse-row">
+            <td><strong>BSE 500 (Benchmark)</strong></td>
+            ${periods.map(p => returnCell(data.bse_returns[p])).join('')}
+        </tr>`;
 }
 
 // ============================================================

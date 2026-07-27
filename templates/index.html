@@ -108,6 +108,7 @@
             <!-- Tab Bar -->
             <div class="tab-bar">
                 <button class="tab-btn active" id="tabClientBtn" onclick="switchTab('client')">Client View</button>
+                <button class="tab-btn" id="tabPerformanceBtn" onclick="switchTab('performance')">Performance</button>
                 <button class="tab-btn" id="tabMasterBtn" onclick="switchTab('master')">Master Dashboard</button>
                 <button class="tab-btn" id="tabConsolidatedBtn" onclick="switchTab('consolidated')">Client Consolidated</button>
                 <button class="tab-btn" id="tabFailedBtn" onclick="switchTab('failed')">Failed Transactions</button>
@@ -267,6 +268,27 @@
 
                 </div><!-- /.factsheet -->
             </div><!-- /#clientTabContent -->
+
+            <!-- PERFORMANCE TAB CONTENT -->
+            <div id="performanceTabContent" style="display:none;">
+                <div class="master-content">
+                    <section class="section">
+                        <h3 class="section-title">Client Performance vs BSE 500</h3>
+                        <p class="section-subtitle">Point-to-point returns as of <span id="perfReportDate">—</span> &bull; recomputed from live NAV data on every load</p>
+
+                        <div class="fs-kpis" id="perfInceptionKpis"></div>
+
+                        <div class="table-responsive" style="margin-top:20px">
+                            <table class="data-table perf-table">
+                                <thead id="perfTableHead"></thead>
+                                <tbody id="perfTableBody">
+                                    <tr><td colspan="6" class="loading">Select a client to view performance...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div><!-- /#performanceTabContent -->
 
             <!-- MASTER DASHBOARD TAB CONTENT -->
             <div id="masterTabContent" style="display:none;">
