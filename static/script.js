@@ -1148,7 +1148,7 @@ Sets the default equity / gold / debt risk stance at each review.
 - Nifty P/E below 20 → move to AGGRESSIVE (markets have historically given better returns from lower valuations)
 - Nifty P/E between 20 and 50 → MODERATE
 - Nifty P/E above 50 → CONSERVATIVE
-> Trend reference: 200 EDMA (exponential daily moving average) is read alongside valuation when setting the profile.
+- 200 Day EMA below 20 → move to AGGRESSIVE (markets have historically given better returns from lower valuations)
 
 # Momentum Confirmation — Rate of Change (ROC)
 Confirms or overrides the valuation-based profile using the BSE 500's rate of change.
