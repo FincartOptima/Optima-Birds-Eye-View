@@ -1189,7 +1189,7 @@ function renderRulesHistory() {
         <tr>
             <td>${r.date}</td>
             <td class="num">${fmt(r.close)}</td>
-            <td class="num">${fmt(r.roc, '%')}</td>
+            <td class="num">${fmt(r.roc)}</td>
             <td><span class="${badgeClass(r.profile)}">${r.profile}</span></td>
             <td class="num">${fmt(r.infl, '%')}</td>
             <td class="num">${fmt(r.gdp, '%')}</td>
