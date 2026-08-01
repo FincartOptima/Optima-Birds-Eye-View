@@ -1179,7 +1179,7 @@ const RULES_HISTORY = [
     { date: '1 Mar 2023',  close: 23160.01, roc: -3.25,  profile: 'Aggressive',   infl: 5.66, gdp: 6.10, pe: 22.30, ratio: 12.30, note: '' },
     { date: '1 Jul 2024',  close: 37172.81, roc: 56.33,  profile: 'Conservative', infl: 3.54, gdp: 5.40, pe: 23.50, ratio: 15.18, note: 'Maximise gold' },
     { date: '1 Feb 2025',  close: 31296.85, roc: 16.57,  profile: 'Moderate',     infl: 3.79, gdp: 6.90, pe: 22.04, ratio: 11.18, note: '' },
-    { date: '1 Jan 2026',  close: 35721.27, roc: -3.90,  profile: 'Aggressive',   infl: null, gdp: null, pe: 24.10, ratio: 7.03,  note: 'Move the extra gold back to equity' },
+    { date: '1 Jan 2026',  close: 35721.27, roc: -3.90,  profile: 'Aggressive',   infl: 2.74, gdp: 7.80, pe: 24.10, ratio: 7.03,  note: 'Move the extra gold back to equity' },
 ];
 
 function renderRulesHistory() {
