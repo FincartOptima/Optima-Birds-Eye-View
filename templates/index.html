@@ -27,6 +27,12 @@
                 <h3>Upload Portfolio Files</h3>
                 <p>Provide the client holdings snapshot and (optionally) the trade allocation master.</p>
 
+                <div id="driveLoadSection" style="display:none; margin-bottom:20px;">
+                    <button class="btn btn-primary" id="driveLoadBtn" onclick="loadFromDrive()">🔄 Load Latest from Drive</button>
+                    <p class="file-info" id="driveInfo"></p>
+                    <p class="section-subtitle" style="margin-top:8px">or upload files manually below</p>
+                </div>
+
                 <div class="upload-rows">
                     <div class="upload-row">
                         <div class="upload-row-label">
@@ -80,6 +86,9 @@
             <!-- Toolbar -->
             <div class="toolbar">
                 <div class="toolbar-left">
+                    <button class="btn btn-secondary" id="driveRefreshBtn" onclick="loadFromDrive()" style="display:none;">
+                        🔄 Refresh from Drive
+                    </button>
                     <button class="btn btn-secondary" onclick="resetApp()">
                         ↻ Upload Different File
                     </button>

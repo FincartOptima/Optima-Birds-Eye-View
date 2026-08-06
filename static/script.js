@@ -146,6 +146,56 @@ async function processUpload() {
     }
 }
 
+async function loadFromDrive(force) {
+    const driveBtn = document.getElementById('driveLoadBtn');
+    const refreshBtn = document.getElementById('driveRefreshBtn');
+    const driveInfo = document.getElementById('driveInfo');
+    if (driveBtn) driveBtn.disabled = true;
+    if (refreshBtn) refreshBtn.disabled = true;
+    showLoading('Loading latest data from Drive...');
+
+    try {
+        const url = '/api/load-from-drive' + (force ? '?force=1' : '');
+        const response = await fetch(url, { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Could not load from Drive');
+
+        clientsList = data.clients || [];
+        hasMasterFile = data.has_master && clientsList.length > 0;
+        document.getElementById('fileInfo').textContent = `✓ Loaded ${data.total_clients || 0} clients from Drive`;
+        if (driveInfo) driveInfo.textContent = `✓ Loaded ${data.total_clients || 0} clients (${new Date().toLocaleTimeString()})`;
+
+        initializeUI();
+        hideLoading();
+
+        if (data.unmapped_funds && data.unmapped_funds.length > 0) {
+            showUnmappedAlert(data.unmapped_funds);
+        }
+    } catch (error) {
+        hideLoading();
+        if (driveInfo) driveInfo.textContent = '';
+        showError(error.message);
+    } finally {
+        if (driveBtn) driveBtn.disabled = false;
+        if (refreshBtn) refreshBtn.disabled = false;
+    }
+}
+
+async function checkDriveConfigured() {
+    try {
+        const response = await fetch('/api/drive-status');
+        const data = await response.json();
+        if (data.configured) {
+            document.getElementById('driveLoadSection').style.display = 'block';
+            document.getElementById('driveRefreshBtn').style.display = 'inline-block';
+            // Auto-load on open so the site shows current data with no click needed
+            loadFromDrive(false);
+        }
+    } catch (error) {
+        console.log('Drive status check failed:', error.message);
+    }
+}
+
 // ============================================================
 // UI Initialization
 // ============================================================
@@ -1298,4 +1348,6 @@ window.addEventListener('DOMContentLoaded', () => {
     const savedMaster = localStorage.getItem('bev_master_sheet_url');
     if (savedNav) document.getElementById('navSheetUrl').value = savedNav;
     if (savedMaster) document.getElementById('masterSheetUrl').value = savedMaster;
+
+    checkDriveConfigured();
 });

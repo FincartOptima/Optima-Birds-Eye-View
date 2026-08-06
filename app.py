@@ -21,6 +21,7 @@ from create_client_factsheet_report import (
 from custodian_statement import validate_custodian_statement, read_custodian_statement
 import csv as csv_mod
 import gsheet_data
+import gdrive_data
 import compute_performance
 
 app = Flask(__name__)
@@ -119,6 +120,161 @@ def _fetch_gsheet(url, fmt='csv'):
     return data
 
 
+def _process_uploaded_files(snap_path, xlsx_path, custodian_path):
+    """Given already-resolved local file paths (from a manual upload, a Google
+    Sheet fetch, or a Google Drive fetch), build reports_cache and return the
+    JSON-ready response payload. Raises ValueError on bad input."""
+    # Reset prior state
+    reports_cache.pop('csv_path', None)
+    reports_cache['reports'] = []
+    reports_cache['bse_prices'] = []
+    reports_cache['failed_transactions'] = []
+
+    current_navs, category_overrides = {}, {}
+    snapshot_holdings, snapshot_cash = {}, {}
+    if snap_path:
+        csv_errors = validate_client_csv(Path(snap_path))
+        if csv_errors:
+            raise ValueError('Invalid client file format:\n• ' + '\n• '.join(csv_errors))
+        reports_cache['csv_path'] = snap_path
+        current_navs, category_overrides = read_client_file_csv(Path(snap_path))
+        snap_date, snapshot_holdings, snapshot_cash = read_snapshot_details(Path(snap_path))
+        print(f"Snapshot NAVs: {len(current_navs)}, holding date: {snap_date}")
+
+    # ---- Account statement (optional) ----
+    custodian_data = {}
+    if custodian_path:
+        custodian_errors = validate_custodian_statement(Path(custodian_path))
+        if custodian_errors:
+            raise ValueError('Invalid account statement format:\n• ' + '\n• '.join(custodian_errors))
+
+        # Build CODE → UCC mapping from the client CSV (if uploaded)
+        code_to_ucc: dict[str, str] = {}
+        if snap_path:
+            with open(snap_path, newline="", encoding="utf-8-sig") as f:
+                for row in csv_mod.DictReader(f):
+                    code = (row.get("CODE") or "").strip()
+                    ucc = (row.get("Client code") or "").strip()
+                    if code and ucc and code not in code_to_ucc:
+                        code_to_ucc[code] = ucc
+
+        custodian_data, custodian_warnings = read_custodian_statement(
+            Path(custodian_path), code_to_ucc=code_to_ucc,
+        )
+        print(f"Account statement: {len(custodian_data)} client accounts parsed")
+        for w in custodian_warnings:
+            print(f"[custodian] {w}")
+
+    # ---- Tradebook (optional) ----
+    client_list = []
+    if xlsx_path:
+        print(f"Processing tradebook: {xlsx_path}")
+        source_workbook = load_workbook(xlsx_path, data_only=True)
+
+        xlsx_errors = validate_trade_master(source_workbook)
+        if xlsx_errors:
+            raise ValueError('Invalid Trade Master format:\n• ' + '\n• '.join(xlsx_errors))
+
+        master = read_master(source_workbook)
+        if not master:
+            raise ValueError('No valid client data found in the trade master file')
+        transactions, failed_transactions = read_transactions(source_workbook, master)
+        reports_cache['failed_transactions'] = failed_transactions
+
+        # BSE 500 benchmark: live from the Google Sheet's 'Benchmark' column
+        try:
+            bse_prices = gsheet_data.get_live_bse_prices()
+            print(f"BSE 500 benchmark: {len(bse_prices)} points from live Google Sheet")
+        except Exception as e:
+            raise ValueError(f'Could not fetch the BSE 500 benchmark from Google Sheets: {e}')
+
+        # Current NAV precedence (highest wins): live Google Sheets
+        # > custodian snapshot Unit Price > local Current_NAVs.xlsx
+        # > latest txn NAV (inside build_client_reports).
+        # Live wins because the CSV snapshot is days old; the Google Sheet
+        # has today's NAVs.  The CSV still provides authoritative *units*.
+        snapshot_navs, snapshot_categories = current_navs, category_overrides
+        try:
+            live_navs, gsheet_warnings = gsheet_data.get_live_current_navs()
+        except Exception as e:
+            live_navs, gsheet_warnings = {}, [str(e)]
+        local_navs, local_categories = read_current_navs(Path(__file__).resolve().parent / "Current_NAVs.xlsx")
+
+        current_navs = {**local_navs, **snapshot_navs, **live_navs}
+        category_overrides = {
+            **local_categories,
+            **gsheet_data.get_category_overrides(),
+            **snapshot_categories,
+        }
+        if live_navs:
+            print(f"Live Google Sheet NAVs: {len(live_navs)}")
+        for w in gsheet_warnings:
+            print(f"[gsheet] {w}")
+
+        reports = build_client_reports(
+            master, transactions, bse_prices, current_navs, category_overrides,
+            custodian_data=custodian_data,
+            snapshot_holdings=snapshot_holdings,
+            snapshot_cash=snapshot_cash,
+        )
+        reports_cache['reports'] = reports
+        reports_cache['bse_prices'] = bse_prices
+        reports_cache['file_path'] = xlsx_path
+        reports_cache['current_navs'] = current_navs
+
+        valid_reports = [r for r in reports if r.cost_value > 0]
+        total_portfolio_value = sum(r.current_value for r in valid_reports)
+        portfolio_cat_values = defaultdict(float)
+        for r in valid_reports:
+            for row in r.category_rows:
+                portfolio_cat_values[row['Category']] += row['Current Value']
+        reports_cache['portfolio_allocation'] = {
+            cat: (portfolio_cat_values.get(cat, 0.0) / total_portfolio_value * 100)
+            for cat in CATEGORY_ORDER
+            if portfolio_cat_values.get(cat, 0.0) > 0
+        } if total_portfolio_value else {}
+
+        client_list = [
+            {'id': i, 'name': r.client_name, 'ucc': r.ucc,
+             'cost_value': r.cost_value, 'current_value': r.current_value}
+            for i, r in enumerate(reports) if r.cost_value > 0
+        ]
+
+    # --- Detect unmapped funds (ISINs in the CSV but not in fund_mapping) ---
+    unmapped_funds: list[dict] = []
+    if snap_path:
+        mapped_isins = {r["isin"] for r in gsheet_data.load_fund_mapping()}
+        seen: set[str] = set()
+        with open(snap_path, newline="", encoding="utf-8-sig") as f:
+            for row in csv_mod.DictReader(f):
+                isin = (row.get("ISIN") or "").strip()
+                scheme = (row.get("SYMBOLNAME") or "").strip()
+                symbol = (row.get("SYMBOLCODE") or "").strip()
+                if not isin or isin in mapped_isins or isin in seen:
+                    continue
+                if symbol.upper() == "CASH":
+                    continue
+                seen.add(isin)
+                unmapped_funds.append({"isin": isin, "scheme": scheme})
+        if unmapped_funds:
+            print(f"Unmapped funds ({len(unmapped_funds)}): "
+                  + ", ".join(f'{u["scheme"]} ({u["isin"]})' for u in unmapped_funds))
+
+    has_any_master = bool(xlsx_path)
+    has_any_snap = bool(snap_path)
+    reports_cache['upload_time'] = datetime.now().isoformat()
+    return {
+        'success': True,
+        'clients': client_list,
+        'total_clients': len(client_list),
+        'has_master': has_any_master,
+        'has_snapshot': has_any_snap,
+        'has_custodian': bool(custodian_data),
+        'unmapped_funds': unmapped_funds,
+        'message': f'Loaded {len(client_list)} clients successfully'
+    }
+
+
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
     """Handle upload of the client holdings CSV and/or the trade master xlsx.
@@ -149,12 +305,6 @@ def upload_file():
         return jsonify({'error': 'No file or Google Sheet URL provided.'}), 400
 
     try:
-        # Reset prior state
-        reports_cache.pop('csv_path', None)
-        reports_cache['reports'] = []
-        reports_cache['bse_prices'] = []
-        reports_cache['failed_transactions'] = []
-
         # ---- Resolve the holdings CSV source ----
         snap_path = None
         if has_snap:
@@ -168,42 +318,11 @@ def upload_file():
                 f.write(csv_bytes)
             print(f"Holdings CSV fetched ({len(csv_bytes):,} bytes)")
 
-        current_navs, category_overrides = {}, {}
-        snapshot_holdings, snapshot_cash = {}, {}
-        if snap_path:
-            csv_errors = validate_client_csv(Path(snap_path))
-            if csv_errors:
-                return jsonify({'error': 'Invalid client file format:\n• ' + '\n• '.join(csv_errors)}), 400
-            reports_cache['csv_path'] = snap_path
-            current_navs, category_overrides = read_client_file_csv(Path(snap_path))
-            snap_date, snapshot_holdings, snapshot_cash = read_snapshot_details(Path(snap_path))
-            print(f"Snapshot NAVs: {len(current_navs)}, holding date: {snap_date}")
-
-        # ---- Resolve the custodian account statement source (optional) ----
-        custodian_data = {}
+        # ---- Resolve the account statement source (optional) ----
+        custodian_path = None
         if has_custodian:
             custodian_path = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(custodian_file.filename))
             custodian_file.save(custodian_path)
-            custodian_errors = validate_custodian_statement(Path(custodian_path))
-            if custodian_errors:
-                return jsonify({'error': 'Invalid account statement format:\n• ' + '\n• '.join(custodian_errors)}), 400
-
-            # Build CODE → UCC mapping from the client CSV (if uploaded)
-            code_to_ucc: dict[str, str] = {}
-            if snap_path:
-                with open(snap_path, newline="", encoding="utf-8-sig") as f:
-                    for row in csv_mod.DictReader(f):
-                        code = (row.get("CODE") or "").strip()
-                        ucc = (row.get("Client code") or "").strip()
-                        if code and ucc and code not in code_to_ucc:
-                            code_to_ucc[code] = ucc
-
-            custodian_data, custodian_warnings = read_custodian_statement(
-                Path(custodian_path), code_to_ucc=code_to_ucc,
-            )
-            print(f"Custodian account statement: {len(custodian_data)} client accounts parsed")
-            for w in custodian_warnings:
-                print(f"[custodian] {w}")
 
         # ---- Resolve the trade master XLSX source ----
         xlsx_path = None
@@ -218,113 +337,8 @@ def upload_file():
                 f.write(xlsx_bytes)
             print(f"Trade master fetched ({len(xlsx_bytes):,} bytes)")
 
-        client_list = []
-        if xlsx_path:
-            print(f"Processing trade master: {xlsx_path}")
-            source_workbook = load_workbook(xlsx_path, data_only=True)
-
-            xlsx_errors = validate_trade_master(source_workbook)
-            if xlsx_errors:
-                return jsonify({'error': 'Invalid Trade Master format:\n• ' + '\n• '.join(xlsx_errors)}), 400
-
-            master = read_master(source_workbook)
-            if not master:
-                return jsonify({'error': 'No valid client data found in the trade master file'}), 400
-            transactions, failed_transactions = read_transactions(source_workbook, master)
-            reports_cache['failed_transactions'] = failed_transactions
-
-            # BSE 500 benchmark: live from the Google Sheet's 'Benchmark' column
-            try:
-                bse_prices = gsheet_data.get_live_bse_prices()
-                print(f"BSE 500 benchmark: {len(bse_prices)} points from live Google Sheet")
-            except Exception as e:
-                return jsonify({'error': f'Could not fetch the BSE 500 benchmark from Google Sheets: {e}'}), 400
-
-            # Current NAV precedence (highest wins): live Google Sheets
-            # > custodian snapshot Unit Price > local Current_NAVs.xlsx
-            # > latest txn NAV (inside build_client_reports).
-            # Live wins because the CSV snapshot is days old; the Google Sheet
-            # has today's NAVs.  The CSV still provides authoritative *units*.
-            snapshot_navs, snapshot_categories = current_navs, category_overrides
-            try:
-                live_navs, gsheet_warnings = gsheet_data.get_live_current_navs()
-            except Exception as e:
-                live_navs, gsheet_warnings = {}, [str(e)]
-            local_navs, local_categories = read_current_navs(Path(__file__).resolve().parent / "Current_NAVs.xlsx")
-
-            current_navs = {**local_navs, **snapshot_navs, **live_navs}
-            category_overrides = {
-                **local_categories,
-                **gsheet_data.get_category_overrides(),
-                **snapshot_categories,
-            }
-            if live_navs:
-                print(f"Live Google Sheet NAVs: {len(live_navs)}")
-            for w in gsheet_warnings:
-                print(f"[gsheet] {w}")
-
-            reports = build_client_reports(
-                master, transactions, bse_prices, current_navs, category_overrides,
-                custodian_data=custodian_data,
-                snapshot_holdings=snapshot_holdings,
-                snapshot_cash=snapshot_cash,
-            )
-            reports_cache['reports'] = reports
-            reports_cache['bse_prices'] = bse_prices
-            reports_cache['file_path'] = xlsx_path
-            reports_cache['current_navs'] = current_navs
-
-            valid_reports = [r for r in reports if r.cost_value > 0]
-            total_portfolio_value = sum(r.current_value for r in valid_reports)
-            portfolio_cat_values = defaultdict(float)
-            for r in valid_reports:
-                for row in r.category_rows:
-                    portfolio_cat_values[row['Category']] += row['Current Value']
-            reports_cache['portfolio_allocation'] = {
-                cat: (portfolio_cat_values.get(cat, 0.0) / total_portfolio_value * 100)
-                for cat in CATEGORY_ORDER
-                if portfolio_cat_values.get(cat, 0.0) > 0
-            } if total_portfolio_value else {}
-
-            client_list = [
-                {'id': i, 'name': r.client_name, 'ucc': r.ucc,
-                 'cost_value': r.cost_value, 'current_value': r.current_value}
-                for i, r in enumerate(reports) if r.cost_value > 0
-            ]
-
-        # --- Detect unmapped funds (ISINs in the CSV but not in fund_mapping) ---
-        unmapped_funds: list[dict] = []
-        if snap_path:
-            mapped_isins = {r["isin"] for r in gsheet_data.load_fund_mapping()}
-            seen: set[str] = set()
-            with open(snap_path, newline="", encoding="utf-8-sig") as f:
-                for row in csv_mod.DictReader(f):
-                    isin = (row.get("ISIN") or "").strip()
-                    scheme = (row.get("SYMBOLNAME") or "").strip()
-                    symbol = (row.get("SYMBOLCODE") or "").strip()
-                    if not isin or isin in mapped_isins or isin in seen:
-                        continue
-                    if symbol.upper() == "CASH":
-                        continue
-                    seen.add(isin)
-                    unmapped_funds.append({"isin": isin, "scheme": scheme})
-            if unmapped_funds:
-                print(f"Unmapped funds ({len(unmapped_funds)}): "
-                      + ", ".join(f'{u["scheme"]} ({u["isin"]})' for u in unmapped_funds))
-
-        has_any_master = bool(xlsx_path)
-        has_any_snap = bool(snap_path)
-        reports_cache['upload_time'] = datetime.now().isoformat()
-        return jsonify({
-            'success': True,
-            'clients': client_list,
-            'total_clients': len(client_list),
-            'has_master': has_any_master,
-            'has_snapshot': has_any_snap,
-            'has_custodian': bool(custodian_data),
-            'unmapped_funds': unmapped_funds,
-            'message': f'Loaded {len(client_list)} clients successfully'
-        })
+        payload = _process_uploaded_files(snap_path, xlsx_path, custodian_path)
+        return jsonify(payload)
 
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
@@ -336,6 +350,63 @@ def upload_file():
         if 'not a zip file' in msg.lower() or 'badzipfile' in msg.lower():
             msg = 'The Trade Master file is not a valid Excel (.xlsx) file. Please check you uploaded the correct file.'
         return jsonify({'error': msg}), 400
+
+
+@app.route('/api/drive-status')
+def drive_status():
+    """Tell the frontend whether Drive auto-load is configured on this
+    deployment, so it knows whether to show the 'Load from Drive' button."""
+    return jsonify({'configured': gdrive_data.is_configured()})
+
+
+@app.route('/api/load-from-drive', methods=['POST'])
+def load_from_drive():
+    """Fetch the Tradebook / Client File / Account Statement from the shared
+    Google Drive folder and process them exactly like a manual upload."""
+    force = request.args.get('force') == '1'
+    try:
+        drive_files = gdrive_data.fetch_files(force=force)
+    except Exception as e:
+        return jsonify({'error': f'Could not reach Google Drive: {e}'}), 400
+
+    if not drive_files:
+        return jsonify({
+            'error': 'No matching files found in the shared Drive folder. '
+                     'Expected files named "Tradebook", "Client File", "Account Statement".'
+        }), 400
+
+    try:
+        snap_path = xlsx_path = custodian_path = None
+
+        if 'client_file' in drive_files:
+            content, _ = drive_files['client_file']
+            snap_path = os.path.join(app.config['UPLOAD_FOLDER'], 'drive_client_file.csv')
+            with open(snap_path, 'wb') as f:
+                f.write(content)
+
+        if 'tradebook' in drive_files:
+            content, _ = drive_files['tradebook']
+            xlsx_path = os.path.join(app.config['UPLOAD_FOLDER'], 'drive_tradebook.xlsx')
+            with open(xlsx_path, 'wb') as f:
+                f.write(content)
+
+        if 'account_statement' in drive_files:
+            content, _ = drive_files['account_statement']
+            custodian_path = os.path.join(app.config['UPLOAD_FOLDER'], 'drive_account_statement.xls')
+            with open(custodian_path, 'wb') as f:
+                f.write(content)
+
+        payload = _process_uploaded_files(snap_path, xlsx_path, custodian_path)
+        payload['source'] = 'drive'
+        return jsonify(payload)
+
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        print(f"Error processing Drive files: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 400
 
 
 @app.route('/api/client/<int:client_id>')

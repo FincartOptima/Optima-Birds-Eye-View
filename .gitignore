@@ -29,6 +29,10 @@ env/
 # Local tooling
 .claude/
 
+# Google Drive service account credentials (secret — never commit)
+credentials/
+*.json.key
+
 # OS
 .DS_Store
 desktop.ini
