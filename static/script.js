@@ -12,6 +12,9 @@ let consolidatedLoaded = false;
 let consolidatedData = null;
 let failedDataLoaded = false;
 let failedData = null;
+let overallDataLoaded = false;
+let overallTopHoldingsChart = null;
+let overallAllocChart = null;
 let hasMasterFile = false;
 let clientPieChart = null;
 let portfolioPieChart = null;
@@ -226,14 +229,17 @@ function initializeUI() {
     const performanceBtn = document.getElementById('tabPerformanceBtn');
     const masterBtn = document.getElementById('tabMasterBtn');
     const failedBtn = document.getElementById('tabFailedBtn');
+    const overallBtn = document.getElementById('tabOverallBtn');
     clientBtn.disabled = !hasMasterFile;
     performanceBtn.disabled = !hasMasterFile;
     masterBtn.disabled = !hasMasterFile;
     failedBtn.disabled = !hasMasterFile;
+    overallBtn.disabled = !hasMasterFile;
     clientBtn.classList.toggle('disabled', !hasMasterFile);
     performanceBtn.classList.toggle('disabled', !hasMasterFile);
     masterBtn.classList.toggle('disabled', !hasMasterFile);
     failedBtn.classList.toggle('disabled', !hasMasterFile);
+    overallBtn.classList.toggle('disabled', !hasMasterFile);
 
     // Land on Client Consolidated (always available from the CSV)
     switchTab('consolidated');
@@ -259,7 +265,7 @@ function setupClientSearch() {
 // ============================================================
 
 function switchTab(tab) {
-    if ((tab === 'client' || tab === 'performance' || tab === 'master' || tab === 'failed') && !hasMasterFile) {
+    if ((tab === 'client' || tab === 'performance' || tab === 'master' || tab === 'failed' || tab === 'overall') && !hasMasterFile) {
         showError('This view needs the tradebook. Re-upload including the tradebook Excel file to enable it.');
         return;
     }
@@ -272,6 +278,7 @@ function switchTab(tab) {
         consolidated: { btn: 'tabConsolidatedBtn', content: 'consolidatedTabContent' },
         failed:       { btn: 'tabFailedBtn',       content: 'failedTabContent' },
         rules:        { btn: 'tabRulesBtn',        content: 'rulesTabContent' },
+        overall:      { btn: 'tabOverallBtn',      content: 'overallTabContent' },
     };
 
     for (const [key, ids] of Object.entries(tabs)) {
@@ -292,6 +299,7 @@ function switchTab(tab) {
     if (tab === 'consolidated' && !consolidatedLoaded) loadConsolidated();
     if (tab === 'failed' && !failedDataLoaded) loadFailedTransactions();
     if (tab === 'rules') loadRules();
+    if (tab === 'overall' && !overallDataLoaded) loadOverallPerformance();
 }
 
 // ============================================================
@@ -567,9 +575,12 @@ function resetApp() {
     consolidatedData = null;
     failedDataLoaded = false;
     failedData = null;
+    overallDataLoaded = false;
     hasMasterFile = false;
     adjustAllocations = [];
     if (adjustPieChart) { adjustPieChart.destroy(); adjustPieChart = null; }
+    if (overallTopHoldingsChart) { overallTopHoldingsChart.destroy(); overallTopHoldingsChart = null; }
+    if (overallAllocChart) { overallAllocChart.destroy(); overallAllocChart = null; }
 
     document.getElementById('uploadSection').style.display = 'block';
     document.getElementById('mainSection').style.display = 'none';
@@ -1335,6 +1346,158 @@ function lockRules() {
     document.getElementById('rulesCancelBtn').style.display = 'none';
     document.getElementById('rulesLockStatus').textContent = '🔒 Locked';
     document.getElementById('rulesLockStatus').classList.remove('unlocked');
+}
+
+// ============================================================
+// Overall Portfolio Performance Tab
+// ============================================================
+
+async function loadOverallPerformance() {
+    const body = document.getElementById('overallPerfBody');
+    body.innerHTML = '<tr><td colspan="4" class="loading">Loading performance data...</td></tr>';
+    try {
+        const response = await fetch('/api/overall-performance');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load overall performance');
+        overallDataLoaded = true;
+        renderOverallPerformance(data);
+    } catch (error) {
+        body.innerHTML = `<tr><td colspan="4" class="loading">${error.message}</td></tr>`;
+    }
+}
+
+function renderOverallPerformance(data) {
+    document.getElementById('overallReportDate').textContent = data.report_date || '—';
+    document.getElementById('overallInceptionDate').textContent = data.inception_date || '—';
+    document.getElementById('overallSubtitle').textContent = `${data.totals.n_clients} clients combined`;
+    document.getElementById('overallPerfSubtitle').textContent =
+        `Since inception (${data.inception_date}) — recomputed from live NAV & benchmark data on every load`;
+
+    // ---- KPI strip ----
+    const t = data.totals;
+    const kpi = (label, value, sub, colorClass) => `
+        <div class="fs-kpi">
+            <span class="fs-kpi-label">${label}</span>
+            <span class="fs-kpi-value ${colorClass || ''}">${value}</span>
+            ${sub ? `<span class="fs-kpi-sub">${sub}</span>` : ''}
+        </div>`;
+    document.getElementById('overallKpis').innerHTML =
+        kpi('Total Invested', formatCurrency(t.invested), 'Cost basis, all clients') +
+        kpi('Current Value', formatCurrency(t.current_value), '') +
+        kpi('Gain / Loss', formatCurrency(t.gain_loss), t.gain_loss_pct != null ? signedPct(t.gain_loss_pct) : 'N/A', glClass(t.gain_loss)) +
+        kpi('Clients', t.n_clients, 'Active, cost value > 0');
+
+    // ---- Performance vs Benchmarks table ----
+    const perf = data.performance;
+    const periods = perf.period_labels;
+    document.getElementById('overallPerfHead').innerHTML = `
+        <tr>
+            <th style="min-width:180px">Portfolio / Benchmark</th>
+            ${periods.map(p => `<th style="min-width:90px;text-align:right">${p}</th>`).join('')}
+        </tr>`;
+    let perfRows = `
+        <tr class="bse-row">
+            <td><strong>Overall Portfolio</strong></td>
+            ${periods.map(p => returnCell(perf.portfolio[p])).join('')}
+        </tr>`;
+    for (const bench of perf.benchmarks) {
+        perfRows += `
+            <tr>
+                <td>${bench.name}</td>
+                ${periods.map(p => returnCell(bench.returns[p])).join('')}
+            </tr>`;
+    }
+    document.getElementById('overallPerfBody').innerHTML = perfRows;
+
+    // ---- Asset allocation ----
+    const allocRows = (data.asset_allocation || []).map(a => `
+        <tr>
+            <td>${a.category}</td>
+            <td class="num">${formatCurrency(a.value)}</td>
+            <td class="num">${a.pct.toFixed(2)}%</td>
+        </tr>`).join('');
+    document.getElementById('overallAllocTable').innerHTML = allocRows || '<tr><td colspan="3" class="loading">No allocation data</td></tr>';
+
+    if (overallAllocChart) { overallAllocChart.destroy(); overallAllocChart = null; }
+    const allocCtx = document.getElementById('overallAllocChart');
+    if (allocCtx && data.asset_allocation && data.asset_allocation.length > 0) {
+        overallAllocChart = new Chart(allocCtx, {
+            type: 'pie',
+            data: {
+                labels: data.asset_allocation.map(a => a.category),
+                datasets: [{
+                    data: data.asset_allocation.map(a => a.pct),
+                    backgroundColor: data.asset_allocation.map((a, i) => catColor(a.category, i)),
+                    borderColor: '#ffffff',
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            generateLabels: chart => chart.data.labels.map((label, i) => ({
+                                text: `${label}  ${chart.data.datasets[0].data[i].toFixed(1)}%`,
+                                fillStyle: chart.data.datasets[0].backgroundColor[i],
+                                strokeStyle: '#fff',
+                                lineWidth: 1,
+                                index: i,
+                            })),
+                            font: { size: 12 },
+                            color: '#2C3E50',
+                            padding: 14,
+                        }
+                    },
+                    tooltip: { callbacks: { label: ctx => `${ctx.label}: ${ctx.parsed.toFixed(2)}%` } }
+                }
+            }
+        });
+    }
+
+    // ---- Top 5 holdings (horizontal bar) ----
+    if (overallTopHoldingsChart) { overallTopHoldingsChart.destroy(); overallTopHoldingsChart = null; }
+    const topCtx = document.getElementById('overallTopHoldingsChart');
+    const topHoldings = data.top_holdings || [];
+    if (topCtx && topHoldings.length > 0) {
+        overallTopHoldingsChart = new Chart(topCtx, {
+            type: 'bar',
+            data: {
+                labels: topHoldings.map(f => f.scheme),
+                datasets: [{
+                    label: 'Allocation (%)',
+                    data: topHoldings.map(f => f.pct),
+                    backgroundColor: '#1F4E78',
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => `${ctx.parsed.x.toFixed(2)}%` } }
+                },
+                scales: {
+                    x: { ticks: { callback: v => v + '%' } }
+                }
+            }
+        });
+    }
+
+    // ---- All fund holdings table ----
+    const fundRows = (data.all_funds || []).map(f => `
+        <tr>
+            <td>${f.scheme}</td>
+            <td>${f.category}</td>
+            <td class="num">${formatCurrency(f.value)}</td>
+            <td class="num">${f.pct.toFixed(2)}%</td>
+        </tr>`).join('');
+    document.getElementById('overallFundsTable').innerHTML = fundRows || '<tr><td colspan="4" class="loading">No fund data</td></tr>';
+}
+
+function downloadOverallPDF() {
+    window.location.href = '/api/overall-performance/download_pdf';
 }
 
 // ============================================================

@@ -14,7 +14,7 @@ from openpyxl import load_workbook
 from create_client_factsheet_report import (
     read_master, read_transactions,
     read_current_navs, read_client_file_csv, read_snapshot_details,
-    build_client_reports, generate_client_pdf,
+    build_client_reports, generate_client_pdf, generate_overall_pdf,
     validate_trade_master, validate_client_csv,
     get_report_date, CATEGORY_ORDER,
 )
@@ -23,6 +23,7 @@ import csv as csv_mod
 import gsheet_data
 import gdrive_data
 import compute_performance
+import compute_overall_performance
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB max file size
@@ -576,6 +577,60 @@ def download_client_pdf(client_id):
         print(f"=== PDF GENERATION ERROR ===\n{tb}\n===========================")
         # Find the deepest "File ..." frame that lives in our own code so
         # the error modal shows where the failure originated.
+        our_frames = [
+            line.strip() for line in tb.splitlines()
+            if line.lstrip().startswith('File "') and 'site-packages' not in line
+        ]
+        detail = our_frames[-1] if our_frames else ''
+        return jsonify({'error': f'Error generating PDF: {str(e)}\n{detail}'}), 500
+
+
+@app.route('/api/overall-performance')
+def get_overall_performance():
+    """Return the whole book's asset allocation, fund breakdown, and
+    performance vs every benchmark carried in the equity Google Sheet."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+
+    try:
+        data = compute_overall_performance.get_overall_performance(
+            reports_cache['reports'],
+            reports_cache['bse_prices'],
+            get_report_date(),
+        )
+        return jsonify(data)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/overall-performance/download_pdf')
+def download_overall_pdf():
+    """Generate and download the Overall Portfolio Performance PDF."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+
+    try:
+        data = compute_overall_performance.get_overall_performance(
+            reports_cache['reports'],
+            reports_cache['bse_prices'],
+            get_report_date(),
+        )
+        temp_pdf_path = str(_TEMP_DIR / "temp_overall.pdf")
+        generate_overall_pdf(data, Path(temp_pdf_path))
+
+        with open(temp_pdf_path, 'rb') as f:
+            pdf_buffer = io.BytesIO(f.read())
+        os.remove(temp_pdf_path)
+
+        pdf_buffer.seek(0)
+        filename = f"Overall_Portfolio_Performance_{get_report_date().strftime('%b_%Y')}.pdf"
+        return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"=== OVERALL PDF GENERATION ERROR ===\n{tb}\n===========================")
         our_frames = [
             line.strip() for line in tb.splitlines()
             if line.lstrip().startswith('File "') and 'site-packages' not in line

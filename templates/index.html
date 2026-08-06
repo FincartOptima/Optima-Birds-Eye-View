@@ -122,6 +122,7 @@
                 <button class="tab-btn" id="tabConsolidatedBtn" onclick="switchTab('consolidated')">Client Consolidated</button>
                 <button class="tab-btn" id="tabFailedBtn" onclick="switchTab('failed')">Failed Transactions</button>
                 <button class="tab-btn" id="tabRulesBtn" onclick="switchTab('rules')">Allocation Rules</button>
+                <button class="tab-btn" id="tabOverallBtn" onclick="switchTab('overall')">Overall Portfolio Performance</button>
             </div>
 
             <!-- CLIENT TAB CONTENT -->
@@ -453,6 +454,96 @@
                     </section>
                 </div>
             </div><!-- /#rulesTabContent -->
+
+            <!-- OVERALL PORTFOLIO PERFORMANCE TAB CONTENT -->
+            <div id="overallTabContent" style="display:none;">
+                <div class="factsheet">
+
+                    <!-- Factsheet header band -->
+                    <div class="fs-header">
+                        <div class="fs-header-left">
+                            <h2>Overall Portfolio Performance</h2>
+                            <p class="fs-ucc" id="overallSubtitle">All clients combined</p>
+                        </div>
+                        <div class="fs-header-right">
+                            <span class="fs-tag">OVERALL PORTFOLIO FACTSHEET</span>
+                            <span class="fs-date" id="overallReportDate">---</span>
+                            <span class="fs-incep">Inception <span id="overallInceptionDate">---</span></span>
+                        </div>
+                    </div>
+
+                    <!-- KPI strip -->
+                    <div class="fs-kpis" id="overallKpis">
+                        <div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>
+                    </div>
+                    <p class="fs-note"><strong>Total Invested</strong> is the combined cost basis of currently-held units plus uninvested cash across every client. <strong>Performance vs Benchmarks</strong> below is time-weighted (TWRR-style): it projects today's exact fund mix backward using each fund's own NAV history, so it can be fairly compared point-to-point against each benchmark index. It does not reflect any single client's actual money-weighted return — see that client's own Performance tab for their cash-flow-timed XIRR.</p>
+
+                    <!-- Performance vs Benchmarks -->
+                    <section class="section">
+                        <h3 class="section-title">Performance vs Benchmarks</h3>
+                        <p class="section-subtitle" id="overallPerfSubtitle">Since inception &mdash; recomputed from live NAV &amp; benchmark data on every load</p>
+                        <div class="table-responsive">
+                            <table class="data-table" id="overallPerfTable">
+                                <thead id="overallPerfHead"></thead>
+                                <tbody id="overallPerfBody">
+                                    <tr><td colspan="4" class="loading">Loading performance data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- Asset Allocation -->
+                    <section class="section">
+                        <h3 class="section-title">Asset Allocation</h3>
+                        <p class="section-subtitle">How the total invested value is allocated across asset classes</p>
+                        <div class="pie-charts-row" id="overallAllocRow">
+                            <div class="pie-chart-panel">
+                                <h4 class="pie-chart-title">By Asset Class</h4>
+                                <canvas id="overallAllocChart"></canvas>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="data-table">
+                                    <thead>
+                                        <tr><th>Category</th><th class="num">Current Value</th><th class="num">Weight</th></tr>
+                                    </thead>
+                                    <tbody id="overallAllocTable">
+                                        <tr><td colspan="3" class="loading">Loading allocation data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Top 5 Holdings -->
+                    <section class="section">
+                        <h3 class="section-title">Top 5 Holdings</h3>
+                        <p class="section-subtitle">By weight, across all clients combined</p>
+                        <div class="pie-chart-panel" style="max-width:800px">
+                            <canvas id="overallTopHoldingsChart"></canvas>
+                        </div>
+                    </section>
+
+                    <!-- All Fund Holdings -->
+                    <section class="section">
+                        <h3 class="section-title">All Fund Holdings</h3>
+                        <p class="section-subtitle">Across which funds the total invested value is currently deployed</p>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>Fund</th><th>Category</th><th class="num">Current Value</th><th class="num">Weight</th></tr>
+                                </thead>
+                                <tbody id="overallFundsTable">
+                                    <tr><td colspan="4" class="loading">Loading fund data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <div style="text-align:center; margin: 24px 0 8px;">
+                        <button class="btn btn-success" onclick="downloadOverallPDF()">⬇ Download PDF</button>
+                    </div>
+                </div>
+            </div><!-- /#overallTabContent -->
 
         </div><!-- /#mainSection -->
 

@@ -1189,3 +1189,174 @@ def _draw_paragraph(c: PdfCanvas, x: float, y: float, width: float, text: str, f
     return y
 
 
+# =====================================================================
+# OVERALL PORTFOLIO PERFORMANCE PDF (whole book, multi-benchmark)
+# =====================================================================
+
+def generate_overall_pdf(data: dict, output_path: Path) -> None:
+    """Single-page factsheet for the whole book: allocation, fund breakdown,
+    and performance vs every benchmark. `data` is the dict returned by
+    compute_overall_performance.get_overall_performance()."""
+    c = PdfCanvas(str(output_path), pagesize=A4)
+    _draw_overall_factsheet(c, data)
+    c.save()
+
+
+def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
+    totals = data["totals"]
+    gl_frac = (totals["gain_loss_pct"] / 100) if totals["gain_loss_pct"] is not None else None
+
+    # ---- Header band -----------------------------------------------------
+    y = _PH - 12
+    c.setFillColor(_NAVY)
+    c.rect(_LM, y - 48, _CW, 48, fill=True, stroke=False)
+    c.setFillColor(_GOLD)
+    c.rect(_LM, y - 51, _CW, 3, fill=True, stroke=False)
+    c.setFillColor(_WHITE)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(_LM + 14, y - 18, "Fincart Direct Mutual Fund Strategic Portfolio")
+    c.setFont("Helvetica", 8)
+    c.drawString(_LM + 14, y - 32, f"Overall Portfolio  |  {totals['n_clients']} Clients")
+    c.drawRightString(_LM + _CW - 14, y - 18, "OVERALL PORTFOLIO FACTSHEET")
+    c.setFont("Helvetica-Bold", 11)
+    c.drawRightString(_LM + _CW - 14, y - 32, REPORT_DATE.strftime("%B %Y"))
+    y -= 62
+
+    # ---- KPI strip --------------------------------------------------------
+    box_h = 50
+    kpis = [
+        ("INCEPTION", data["inception_date"], "Strategy launch date", None),
+        ("TOTAL INVESTED", _fmt_inr(totals["invested"]), "Cost basis, all clients", None),
+        ("CURRENT VALUE", _fmt_inr(totals["current_value"]), "", None),
+        ("GAIN / LOSS", _fmt_inr(totals["gain_loss"]), _fmt_pct(gl_frac) if gl_frac is not None else "N/A", gl_frac),
+    ]
+    box_w = _CW / len(kpis)
+    for i, (label, value, sub, color_value) in enumerate(kpis):
+        bx = _LM + i * box_w
+        c.setFillColor(_LIGHT_BLUE)
+        c.rect(bx, y - box_h, box_w, box_h, fill=True, stroke=False)
+        c.setStrokeColor(_BORDER)
+        c.setLineWidth(0.4)
+        c.rect(bx, y - box_h, box_w, box_h, fill=False, stroke=True)
+        c.setFillColor(_TEXT_MED)
+        c.setFont("Helvetica-Bold", 7)
+        c.drawCentredString(bx + box_w / 2, y - 12, label)
+        c.setFillColor(_pct_color(color_value) if color_value is not None else _NAVY)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString(bx + box_w / 2, y - 28, value)
+        if sub:
+            c.setFillColor(_TEXT_MED)
+            c.setFont("Helvetica", 7)
+            c.drawCentredString(bx + box_w / 2, y - 42, sub)
+    y -= box_h + 12
+
+    # ---- Performance vs benchmarks (multi-column) -------------------------
+    perf = data["performance"]
+    period_labels = perf["period_labels"]
+    y = _draw_simple_section(c, y, "PERFORMANCE vs BENCHMARKS  (Since Inception: " + data["inception_date"] + ")")
+    header = ["Portfolio / Benchmark"] + period_labels
+    rows = [["Overall Portfolio"] + [_fmt_pct_num(perf["portfolio"].get(p)) for p in period_labels]]
+    for bench in perf["benchmarks"]:
+        rows.append([bench["name"]] + [_fmt_pct_num(bench["returns"].get(p)) for p in period_labels])
+    col_widths = [_CW * 0.32] + [_CW * 0.68 / len(period_labels)] * len(period_labels)
+    y = _draw_multi_col_table(c, y, header, rows, col_widths, highlight_first_row=True)
+    y -= 8
+
+    # ---- Asset allocation ---------------------------------------------------
+    alloc_rows = [
+        (a["category"], _fmt_inr(a["value"]), f"{a['pct']:.2f}%")
+        for a in data["asset_allocation"]
+    ]
+    if alloc_rows:
+        alloc_rows.append(("TOTAL", _fmt_inr(totals["current_value"]), "100.00%"))
+        y = _draw_simple_section(c, y, "ASSET ALLOCATION")
+        y = _draw_three_col_table(
+            c, y,
+            ["Category", "Current Value", "Weight"],
+            alloc_rows,
+            col_widths=[_CW * 0.5, _CW * 0.3, _CW * 0.2],
+            total_last=True,
+        )
+        y -= 8
+
+    # ---- Top 5 holdings ----------------------------------------------------
+    holding_rows = [
+        (f["scheme"][:52], _fmt_inr(f["value"]), f"{f['pct']:.2f}%")
+        for f in data["top_holdings"]
+    ]
+    if holding_rows:
+        y = _draw_simple_section(c, y, "TOP 5 HOLDINGS  (Across All Clients)")
+        y = _draw_three_col_table(
+            c, y,
+            ["Fund", "Current Value", "Weight"],
+            holding_rows,
+            col_widths=[_CW * 0.6, _CW * 0.22, _CW * 0.18],
+        )
+        y -= 8
+
+    # ---- Disclaimer ---------------------------------------------------------
+    disclaimer_text = (
+        "Overall portfolio performance is time-weighted (TWRR-style), projecting each fund's current weight in "
+        "the book backward using its own NAV history — it does not reflect any single client's actual money-weighted "
+        "return, which depends on their individual deposit timing (see the per-client Performance tab for that). "
+        "Mutual fund investments are subject to market risks; read all scheme-related documents carefully. "
+        "Past performance is not indicative of future results. This factsheet is for informational purposes only "
+        "and does not constitute investment advice. "
+        "Credent Asset Management Services Pvt Ltd  |  SEBI PMS Reg. INP000006101  |  www.credentglobal.com"
+    )
+    if y < 110:
+        c.showPage()
+        y = _PH - 30
+    y = _draw_simple_section(c, y, "DISCLAIMER")
+    _draw_paragraph(c, _LM, y - 4, _CW, disclaimer_text, font_size=7.5, leading=10)
+
+
+def _fmt_pct_num(val: float | None) -> str:
+    """Format a value already expressed in percentage points (e.g. 12.34, not 0.1234)."""
+    if val is None:
+        return "N/A"
+    return f"{'+' if val >= 0 else ''}{val:.2f}%"
+
+
+def _draw_multi_col_table(
+    c: PdfCanvas,
+    y: float,
+    headers: list[str],
+    rows: list[list[str]],
+    col_widths: list[float],
+    highlight_first_row: bool = False,
+) -> float:
+    """N-column table (used for the multi-benchmark performance grid)."""
+    row_h = 15
+    x_positions = [_LM]
+    for w in col_widths[:-1]:
+        x_positions.append(x_positions[-1] + w)
+
+    c.setFillColor(_DARK_NAVY)
+    c.rect(_LM, y - row_h, _CW, row_h, fill=True, stroke=False)
+    c.setFillColor(_WHITE)
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawString(x_positions[0] + 6, y - 10, headers[0])
+    for xi, h in zip(x_positions[1:], headers[1:]):
+        idx = x_positions.index(xi)
+        c.drawRightString(xi + col_widths[idx] - 6, y - 10, h)
+    y -= row_h
+
+    for ri, row in enumerate(rows):
+        is_highlight = highlight_first_row and ri == 0
+        bg = _CREAM if is_highlight else (_LIGHT_BLUE if ri % 2 == 0 else _WHITE)
+        c.setFillColor(bg)
+        c.rect(_LM, y - row_h, _CW, row_h, fill=True, stroke=False)
+        c.setStrokeColor(_BORDER)
+        c.setLineWidth(0.3)
+        c.rect(_LM, y - row_h, _CW, row_h, fill=False, stroke=True)
+        c.setFillColor(_TEXT_DARK)
+        c.setFont("Helvetica-Bold" if is_highlight else "Helvetica", 7.5)
+        c.drawString(x_positions[0] + 6, y - 10, str(row[0]))
+        for xi, val in zip(x_positions[1:], row[1:]):
+            idx = x_positions.index(xi)
+            c.drawRightString(xi + col_widths[idx] - 6, y - 10, str(val))
+        y -= row_h
+    return y
+
+
