@@ -1143,9 +1143,10 @@ _OVERALL_CAT_COLORS = {
 }
 
 
-def _draw_allocation_pie(c: PdfCanvas, y: float, asset_allocation: list[dict]) -> float:
-    """Small pie chart for the asset-allocation category weights, positioned
-    at the left margin. Returns the y below the chart."""
+def _draw_allocation_pie(c: PdfCanvas, y: float, asset_allocation: list[dict], alloc_rows: list[tuple[str, str, str]]) -> float:
+    """Pie chart for the asset-allocation category weights, with the actual
+    Category / Current Value / Weight table positioned beside it (not below
+    it). Returns the y below whichever of the two runs deeper."""
     if not asset_allocation:
         return y
     y -= 8  # clearance so the pie's own top label doesn't crowd the section header above
@@ -1166,19 +1167,22 @@ def _draw_allocation_pie(c: PdfCanvas, y: float, asset_allocation: list[dict]) -
         pie.slices[i].fillColor = HexColor(_OVERALL_CAT_COLORS.get(a["category"], "#A0B4C8"))
     d.add(pie)
     renderPDF.draw(d, c, _LM, y - pie_size)
+    pie_bottom_y = y - pie_size - 10
 
-    # Legend to the right of the pie
-    legend_x = _LM + pie_size + 40
-    legend_y = y - 14
-    c.setFont("Helvetica", 7.5)
-    for a in asset_allocation:
-        c.setFillColor(HexColor(_OVERALL_CAT_COLORS.get(a["category"], "#A0B4C8")))
-        c.rect(legend_x, legend_y - 7, 8, 8, fill=True, stroke=False)
-        c.setFillColor(_TEXT_DARK)
-        c.drawString(legend_x + 12, legend_y, f"{a['category']}  ({a['pct']:.1f}%)")
-        legend_y -= 14
+    # Table alongside the pie, in the remaining width to its right
+    table_x = _LM + pie_size + 30
+    table_width = _CW - pie_size - 30
+    table_bottom_y = _draw_three_col_table(
+        c, y,
+        ["Category", "Current Value", "Weight"],
+        alloc_rows,
+        col_widths=[table_width * 0.46, table_width * 0.34, table_width * 0.20],
+        total_last=True,
+        x_start=table_x,
+        table_width=table_width,
+    )
 
-    return y - pie_size - 10
+    return min(pie_bottom_y, table_bottom_y)
 
 
 def _draw_three_col_table(
@@ -1188,14 +1192,18 @@ def _draw_three_col_table(
     rows: list[tuple[str, str, str]],
     col_widths: list[float],
     total_last: bool = False,
+    x_start: float | None = None,
+    table_width: float | None = None,
 ) -> float:
+    x0 = _LM if x_start is None else x_start
+    width = _CW if table_width is None else table_width
     row_h = 15
-    x_positions = [_LM]
+    x_positions = [x0]
     for w in col_widths[:-1]:
         x_positions.append(x_positions[-1] + w)
     # header
     c.setFillColor(_DARK_NAVY)
-    c.rect(_LM, y - row_h, _CW, row_h, fill=True, stroke=False)
+    c.rect(x0, y - row_h, width, row_h, fill=True, stroke=False)
     c.setFillColor(_WHITE)
     c.setFont("Helvetica-Bold", 7.5)
     c.drawString(x_positions[0] + 6, y - 10, headers[0])
@@ -1207,10 +1215,10 @@ def _draw_three_col_table(
         is_total = total_last and i == len(rows) - 1
         bg = _CREAM if is_total else (_LIGHT_BLUE if i % 2 == 0 else _WHITE)
         c.setFillColor(bg)
-        c.rect(_LM, y - row_h, _CW, row_h, fill=True, stroke=False)
+        c.rect(x0, y - row_h, width, row_h, fill=True, stroke=False)
         c.setStrokeColor(_BORDER)
         c.setLineWidth(0.3)
-        c.rect(_LM, y - row_h, _CW, row_h, fill=False, stroke=True)
+        c.rect(x0, y - row_h, width, row_h, fill=False, stroke=True)
         c.setFillColor(_TEXT_DARK)
         c.setFont("Helvetica-Bold" if is_total else "Helvetica", 7.5)
         c.drawString(x_positions[0] + 6, y - 10, str(a))
@@ -1373,14 +1381,7 @@ def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
     if alloc_rows:
         alloc_rows.append(("TOTAL", _fmt_inr(totals["current_value"]), "100.00%"))
         y = _draw_simple_section(c, y, "ASSET ALLOCATION")
-        y = _draw_allocation_pie(c, y, data["asset_allocation"])
-        y = _draw_three_col_table(
-            c, y,
-            ["Category", "Current Value", "Weight"],
-            alloc_rows,
-            col_widths=[_CW * 0.5, _CW * 0.3, _CW * 0.2],
-            total_last=True,
-        )
+        y = _draw_allocation_pie(c, y, data["asset_allocation"], alloc_rows)
         y -= 8
 
     # ---- Top 5 holdings ----------------------------------------------------
