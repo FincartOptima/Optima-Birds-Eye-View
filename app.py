@@ -24,6 +24,7 @@ import gsheet_data
 import gdrive_data
 import compute_performance
 import compute_overall_performance
+from generate_pptx import generate_overall_pptx
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB max file size
@@ -637,6 +638,45 @@ def download_overall_pdf():
         ]
         detail = our_frames[-1] if our_frames else ''
         return jsonify({'error': f'Error generating PDF: {str(e)}\n{detail}'}), 500
+
+
+@app.route('/api/overall-performance/download_pptx')
+def download_overall_pptx():
+    """Generate and download the Overall Portfolio Performance PPTX."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+
+    try:
+        data = compute_overall_performance.get_overall_performance(
+            reports_cache['reports'],
+            reports_cache['bse_prices'],
+            get_report_date(),
+        )
+        temp_pptx_path = str(_TEMP_DIR / "temp_overall.pptx")
+        generate_overall_pptx(data, Path(temp_pptx_path))
+
+        with open(temp_pptx_path, 'rb') as f:
+            pptx_buffer = io.BytesIO(f.read())
+        os.remove(temp_pptx_path)
+
+        pptx_buffer.seek(0)
+        filename = f"Overall_Portfolio_Performance_{get_report_date().strftime('%b_%Y')}.pptx"
+        return send_file(
+            pptx_buffer,
+            mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            as_attachment=True,
+            download_name=filename,
+        )
+    except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
+        print(f"=== OVERALL PPTX GENERATION ERROR ===\n{tb}\n===========================")
+        our_frames = [
+            line.strip() for line in tb.splitlines()
+            if line.lstrip().startswith('File "') and 'site-packages' not in line
+        ]
+        detail = our_frames[-1] if our_frames else ''
+        return jsonify({'error': f'Error generating PPTX: {str(e)}\n{detail}'}), 500
 
 
 @app.route('/api/master')

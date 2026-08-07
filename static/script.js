@@ -1500,6 +1500,10 @@ function downloadOverallPDF() {
     window.location.href = '/api/overall-performance/download_pdf';
 }
 
+function downloadOverallPPTX() {
+    window.location.href = '/api/overall-performance/download_pptx';
+}
+
 // ============================================================
 // Init
 // ============================================================
