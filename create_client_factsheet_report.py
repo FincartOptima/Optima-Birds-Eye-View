@@ -1148,6 +1148,7 @@ def _draw_allocation_pie(c: PdfCanvas, y: float, asset_allocation: list[dict]) -
     at the left margin. Returns the y below the chart."""
     if not asset_allocation:
         return y
+    y -= 8  # clearance so the pie's own top label doesn't crowd the section header above
     pie_size = 120
     d = Drawing(pie_size + 20, pie_size)
     pie = Pie()
@@ -1163,6 +1164,7 @@ def _draw_allocation_pie(c: PdfCanvas, y: float, asset_allocation: list[dict]) -
     pie.slices.strokeWidth = 1
     for i, a in enumerate(asset_allocation):
         pie.slices[i].fillColor = HexColor(_OVERALL_CAT_COLORS.get(a["category"], "#A0B4C8"))
+    d.add(pie)
     renderPDF.draw(d, c, _LM, y - pie_size)
 
     # Legend to the right of the pie
