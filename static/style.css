@@ -465,6 +465,25 @@ body {
     color: var(--navy);
 }
 
+.disclaimer-text {
+    color: var(--text-med);
+    font-size: 0.82rem;
+    line-height: 1.6;
+}
+
+.disclaimer-text p {
+    margin-bottom: 10px;
+}
+
+.disclaimer-text strong {
+    color: var(--navy);
+}
+
+.disclaimer-text a {
+    color: var(--navy);
+    word-break: break-all;
+}
+
 /* ============================================================
    Tables
    ============================================================ */

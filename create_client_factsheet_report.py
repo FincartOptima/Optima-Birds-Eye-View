@@ -21,6 +21,9 @@ from openpyxl import load_workbook
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen.canvas import Canvas as PdfCanvas
 from reportlab.lib.colors import HexColor
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.charts.piecharts import Pie
+from reportlab.graphics import renderPDF
 
 from custodian_statement import CustodianStatement, CorpusDeposit
 
@@ -1130,6 +1133,52 @@ def _draw_two_col_table(c: PdfCanvas, y: float, rows: list[tuple[str, str]], lab
     return y
 
 
+_OVERALL_CAT_COLORS = {
+    "Indian Equity":  "#14365C",
+    "Foreign Equity": "#3A7CA5",
+    "Gold":           "#C5922E",
+    "Debt":           "#5DADE2",
+    "Cash Fund":      "#7DCEA0",
+    "Only Cash":      "#A0B4C8",
+}
+
+
+def _draw_allocation_pie(c: PdfCanvas, y: float, asset_allocation: list[dict]) -> float:
+    """Small pie chart for the asset-allocation category weights, positioned
+    at the left margin. Returns the y below the chart."""
+    if not asset_allocation:
+        return y
+    pie_size = 120
+    d = Drawing(pie_size + 20, pie_size)
+    pie = Pie()
+    pie.x = 10
+    pie.y = 0
+    pie.width = pie_size
+    pie.height = pie_size
+    pie.data = [a["pct"] for a in asset_allocation]
+    pie.labels = [f"{a['pct']:.1f}%" for a in asset_allocation]
+    pie.simpleLabels = 1
+    pie.sideLabels = 0
+    pie.slices.strokeColor = _WHITE
+    pie.slices.strokeWidth = 1
+    for i, a in enumerate(asset_allocation):
+        pie.slices[i].fillColor = HexColor(_OVERALL_CAT_COLORS.get(a["category"], "#A0B4C8"))
+    renderPDF.draw(d, c, _LM, y - pie_size)
+
+    # Legend to the right of the pie
+    legend_x = _LM + pie_size + 40
+    legend_y = y - 14
+    c.setFont("Helvetica", 7.5)
+    for a in asset_allocation:
+        c.setFillColor(HexColor(_OVERALL_CAT_COLORS.get(a["category"], "#A0B4C8")))
+        c.rect(legend_x, legend_y - 7, 8, 8, fill=True, stroke=False)
+        c.setFillColor(_TEXT_DARK)
+        c.drawString(legend_x + 12, legend_y, f"{a['category']}  ({a['pct']:.1f}%)")
+        legend_y -= 14
+
+    return y - pie_size - 10
+
+
 def _draw_three_col_table(
     c: PdfCanvas,
     y: float,
@@ -1193,6 +1242,53 @@ def _draw_paragraph(c: PdfCanvas, x: float, y: float, width: float, text: str, f
 # OVERALL PORTFOLIO PERFORMANCE PDF (whole book, multi-benchmark)
 # =====================================================================
 
+_STRATEGY_SNAPSHOT = [
+    ("Portfolio Manager", "AMPL Asset Management"),
+    ("SEBI PMS Reg. No.", "INP000006101"),
+    ("Strategy Type", "Multi-Asset MF Portfolio"),
+    ("Investment Universe", "Direct Plan Mutual Funds"),
+    ("Custodian / Fund A/c", "Nuvama Wealth"),
+    ("Min. Investment", "Rs 50 Lakh"),
+]
+
+_OVERALL_DISCLAIMER_SECTIONS = [
+    ("General Risk.",
+     "Prospective clients are expected to carefully consider all relevant risk factors — including financial "
+     "condition, risk-return profile, tax implications, and investment objectives — before making any investment "
+     "decision. Past performance is not indicative of future results."),
+    ("Market & Mutual Fund Risk.",
+     "All products marketed by AMPL Asset Management Services Pvt Ltd are subject to market risks including "
+     "settlement risk, economic risk, political risk, business risk, sector risk and concentration risk. The "
+     "strategy invests exclusively in direct plan mutual fund schemes; the NAV of underlying schemes is exposed to "
+     "equity, debt, currency and commodity market fluctuations. Mutual fund investments are subject to market "
+     "risks; please read all scheme-related documents carefully before investing."),
+    ("Performance Attribution.",
+     "Past performance of the Portfolio Manager, the strategy, or similar products does not guarantee future "
+     "performance. Returns shown are computed using the Time Weighted Rate of Return (TWRR) methodology in line "
+     "with SEBI's circular dated 02-December-2022. Direct plan returns are gross of all distribution / commission "
+     "charges but net of fund-level expenses (TER). Individual investor returns may differ owing to timing of "
+     "inflows/outflows and portfolio composition differences."),
+    ("Tax, Legal & Advisory.",
+     "Prospective investors are advised to seek independent professional legal, accounting and tax advice before "
+     "deciding on any investment or disinvestment. AMPL Asset Management may have financial or business interests "
+     "that could affect the objectivity of the views expressed in this document. The document is for informational "
+     "purposes only and does not constitute an offer, solicitation, recommendation, or invitation to purchase or "
+     "sell any investment product."),
+    ("SEBI Disclosure.",
+     "This document has neither been approved nor disapproved by SEBI, nor has SEBI certified the accuracy or "
+     "adequacy of its contents. The portfolio data and performance figures shown are as uploaded on the SEBI / "
+     "APMI website as on the cover date. For peer comparison within the strategy category, please refer to: "
+     "www.apmiindia.org/apmi/welcomeiaperformance.htm?action=PMSmenu. Clients have the option to onboard AMPL "
+     "Asset Management PMS either directly or through a SEBI-registered distributor."),
+    ("Liability & Confidentiality.",
+     "AMPL Asset Management is not liable for any losses arising from investment / disinvestment decisions made "
+     "on the basis of communications received, nor for losses arising from incorrect or misleading instructions "
+     "issued by clients, whether oral or written. This document is strictly confidential and intended only for "
+     "the addressee; unauthorised reproduction, distribution, or use of the contents is prohibited. For the full "
+     "Disclosure Document and risk factors, please contact the Portfolio Manager or visit www.amplcapital.com."),
+]
+
+
 def generate_overall_pdf(data: dict, output_path: Path) -> None:
     """Single-page factsheet for the whole book: allocation, fund breakdown,
     and performance vs every benchmark. `data` is the dict returned by
@@ -1250,6 +1346,11 @@ def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
             c.drawCentredString(bx + box_w / 2, y - 42, sub)
     y -= box_h + 12
 
+    # ---- Strategy snapshot --------------------------------------------------
+    y = _draw_simple_section(c, y, "STRATEGY SNAPSHOT")
+    y = _draw_two_col_table(c, y, _STRATEGY_SNAPSHOT, label_w=150)
+    y -= 8
+
     # ---- Performance vs benchmarks (multi-column) -------------------------
     perf = data["performance"]
     period_labels = perf["period_labels"]
@@ -1270,6 +1371,7 @@ def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
     if alloc_rows:
         alloc_rows.append(("TOTAL", _fmt_inr(totals["current_value"]), "100.00%"))
         y = _draw_simple_section(c, y, "ASSET ALLOCATION")
+        y = _draw_allocation_pie(c, y, data["asset_allocation"])
         y = _draw_three_col_table(
             c, y,
             ["Category", "Current Value", "Weight"],
@@ -1294,21 +1396,34 @@ def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
         )
         y -= 8
 
-    # ---- Disclaimer ---------------------------------------------------------
-    disclaimer_text = (
+    # ---- Methodology note -----------------------------------------------------
+    methodology_text = (
         "Overall portfolio performance is time-weighted (TWRR-style), projecting each fund's current weight in "
         "the book backward using its own NAV history — it does not reflect any single client's actual money-weighted "
-        "return, which depends on their individual deposit timing (see the per-client Performance tab for that). "
-        "Mutual fund investments are subject to market risks; read all scheme-related documents carefully. "
-        "Past performance is not indicative of future results. This factsheet is for informational purposes only "
-        "and does not constitute investment advice. "
-        "Credent Asset Management Services Pvt Ltd  |  SEBI PMS Reg. INP000006101  |  www.credentglobal.com"
+        "return, which depends on their individual deposit timing (see the per-client Performance tab for that)."
     )
     if y < 110:
         c.showPage()
         y = _PH - 30
-    y = _draw_simple_section(c, y, "DISCLAIMER")
-    _draw_paragraph(c, _LM, y - 4, _CW, disclaimer_text, font_size=7.5, leading=10)
+    y = _draw_simple_section(c, y, "METHODOLOGY NOTE")
+    y = _draw_paragraph(c, _LM, y - 4, _CW, methodology_text, font_size=7.5, leading=10)
+    y -= 8
+
+    # ---- Disclaimer & Statutory Disclosures ------------------------------------
+    if y < 110:
+        c.showPage()
+        y = _PH - 30
+    y = _draw_simple_section(c, y, "DISCLAIMER & STATUTORY DISCLOSURES")
+    for heading, body in _OVERALL_DISCLAIMER_SECTIONS:
+        if y < 90:
+            c.showPage()
+            y = _PH - 30
+        c.setFillColor(_TEXT_DARK)
+        c.setFont("Helvetica-Bold", 7.5)
+        c.drawString(_LM + 6, y - 4, heading)
+        y -= 12
+        y = _draw_paragraph(c, _LM, y, _CW, body, font_size=7.5, leading=10)
+        y -= 6
 
 
 def _fmt_pct_num(val: float | None) -> str:
