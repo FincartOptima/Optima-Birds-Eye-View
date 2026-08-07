@@ -22,7 +22,6 @@ from custodian_statement import validate_custodian_statement, read_custodian_sta
 import csv as csv_mod
 import gsheet_data
 import gdrive_data
-import compute_performance
 import compute_overall_performance
 from generate_pptx import generate_overall_pptx
 
@@ -70,7 +69,7 @@ def _build_all_holdings(report):
     if report.only_cash > 0:
         rows.append({
             'name': 'Cash (Uninvested)',
-            'category': 'Only Cash',
+            'category': 'Cash',
             'isin': None,
             'units': None,
             'cost_value': report.only_cash,
@@ -507,35 +506,6 @@ def get_client_data(client_id):
     return jsonify(client_data)
 
 
-@app.route('/api/client/<int:client_id>/performance')
-def get_client_performance(client_id):
-    """Return the client's point-to-point returns (1D/7D/30D/120D/365D) plus
-    since-inception XIRR, alongside the BSE 500 benchmark for the same
-    windows. Recomputed from live NAV history on every request."""
-    if 'reports' not in reports_cache:
-        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
-
-    reports = reports_cache['reports']
-    valid_ids = [i for i, r in enumerate(reports) if r.cost_value > 0]
-
-    if client_id not in valid_ids:
-        return jsonify({'error': 'Invalid client ID'}), 404
-
-    report = reports[client_id]
-    bse_prices = reports_cache.get('bse_prices', [])
-    try:
-        perf = compute_performance.get_client_performance(report, bse_prices, get_report_date())
-    except Exception as e:
-        return jsonify({'error': f'Could not compute performance: {e}'}), 400
-
-    return jsonify({
-        'id': client_id,
-        'name': report.client_name,
-        'ucc': report.ucc,
-        **perf,
-    })
-
-
 @app.route('/api/client/<int:client_id>/download_pdf')
 def download_client_pdf(client_id):
     """Generate and download PDF for a client"""
@@ -586,10 +556,27 @@ def download_client_pdf(client_id):
         return jsonify({'error': f'Error generating PDF: {str(e)}\n{detail}'}), 500
 
 
+def _parse_overall_client_id():
+    """Read ?client_id=N from the query string. Returns None (aggregate/
+    Overall view) if absent, invalid, or out of range for reports_cache."""
+    raw = request.args.get('client_id', '').strip()
+    if not raw:
+        return None
+    try:
+        client_id = int(raw)
+    except ValueError:
+        return None
+    reports = reports_cache.get('reports', [])
+    if 0 <= client_id < len(reports):
+        return client_id
+    return None
+
+
 @app.route('/api/overall-performance')
 def get_overall_performance():
     """Return the whole book's asset allocation, fund breakdown, and
-    performance vs every benchmark carried in the equity Google Sheet."""
+    performance vs every benchmark carried in the equity Google Sheet.
+    Pass ?client_id=N to scope everything to a single client instead."""
     if 'reports' not in reports_cache:
         return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
 
@@ -598,6 +585,7 @@ def get_overall_performance():
             reports_cache['reports'],
             reports_cache['bse_prices'],
             get_report_date(),
+            client_id=_parse_overall_client_id(),
         )
         return jsonify(data)
     except Exception as e:
@@ -617,6 +605,7 @@ def download_overall_pdf():
             reports_cache['reports'],
             reports_cache['bse_prices'],
             get_report_date(),
+            client_id=_parse_overall_client_id(),
         )
         temp_pdf_path = str(_TEMP_DIR / "temp_overall.pdf")
         generate_overall_pdf(data, Path(temp_pdf_path))
@@ -626,7 +615,8 @@ def download_overall_pdf():
         os.remove(temp_pdf_path)
 
         pdf_buffer.seek(0)
-        filename = f"Overall_Portfolio_Performance_{get_report_date().strftime('%b_%Y')}.pdf"
+        name_part = data['client']['name'].replace(' ', '_').replace('/', '_') if data.get('client') else 'Overall'
+        filename = f"{name_part}_Portfolio_Performance_{get_report_date().strftime('%b_%Y')}.pdf"
         return send_file(pdf_buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
     except Exception as e:
         import traceback
@@ -651,6 +641,7 @@ def download_overall_pptx():
             reports_cache['reports'],
             reports_cache['bse_prices'],
             get_report_date(),
+            client_id=_parse_overall_client_id(),
         )
         temp_pptx_path = str(_TEMP_DIR / "temp_overall.pptx")
         generate_overall_pptx(data, Path(temp_pptx_path))
@@ -660,7 +651,8 @@ def download_overall_pptx():
         os.remove(temp_pptx_path)
 
         pptx_buffer.seek(0)
-        filename = f"Overall_Portfolio_Performance_{get_report_date().strftime('%b_%Y')}.pptx"
+        name_part = data['client']['name'].replace(' ', '_').replace('/', '_') if data.get('client') else 'Overall'
+        filename = f"{name_part}_Portfolio_Performance_{get_report_date().strftime('%b_%Y')}.pptx"
         return send_file(
             pptx_buffer,
             mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',

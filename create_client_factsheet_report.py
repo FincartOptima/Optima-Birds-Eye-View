@@ -57,12 +57,15 @@ CATEGORY_BY_ISIN = {
     "INF174K01MP6": "Gold",
     "INF109K01U92": "Gold",
     "INF846K01DI3": "Debt",
-    "INF277K017Q3": "Cash Fund",
-    "INF174K01NE8": "Cash Fund",
+    "INF277K017Q3": "Cash",
+    "INF174K01NE8": "Cash",
     "INF754K01LB7": "Foreign Equity",
 }
 
-CATEGORY_ORDER = ["Indian Equity", "Foreign Equity", "Gold", "Debt", "Cash Fund", "Only Cash"]
+# Liquid/arbitrage funds and literal uninvested cash are grouped together as
+# one "Cash" category everywhere in the app — both are cash-equivalent from
+# an allocation standpoint, and splitting them was confusing more than it helped.
+CATEGORY_ORDER = ["Indian Equity", "Foreign Equity", "Gold", "Debt", "Cash"]
 
 
 @dataclass
@@ -221,7 +224,7 @@ def infer_category(isin: str, scheme_name: str) -> str:
     if any(word in text for word in ["bond", "debt", "gilt"]):
         return "Debt"
     if any(word in text for word in ["liquid", "arbitrage", "money market", "overnight"]):
-        return "Cash Fund"
+        return "Cash"
     return "Indian Equity"
 
 
@@ -820,8 +823,8 @@ def build_client_reports(
             category_values[holding.category]["current"] += holding.current_value
             category_values[holding.category]["unrealized"] += holding.unrealized_pl
             category_values[holding.category]["realized"] += holding.realized_pl
-        category_values["Only Cash"]["cost"] += report.only_cash
-        category_values["Only Cash"]["current"] += report.only_cash
+        category_values["Cash"]["cost"] += report.only_cash
+        category_values["Cash"]["current"] += report.only_cash
         report.category_rows = []
         for category in CATEGORY_ORDER:
             row = category_values[category]
@@ -938,8 +941,7 @@ _PDF_CAT_DISPLAY = {
     "Foreign Equity": "International Equity",
     "Gold": "Commodities (Gold + Nat Res)",
     "Debt": "Debt Mutual Funds",
-    "Cash Fund": "Cash & Equivalent",
-    "Only Cash": "Cash & Equivalent",
+    "Cash": "Cash & Equivalent",
 }
 
 
@@ -1138,8 +1140,7 @@ _OVERALL_CAT_COLORS = {
     "Foreign Equity": "#3A7CA5",
     "Gold":           "#C5922E",
     "Debt":           "#5DADE2",
-    "Cash Fund":      "#7DCEA0",
-    "Only Cash":      "#A0B4C8",
+    "Cash":           "#7DCEA0",
 }
 
 
@@ -1310,6 +1311,7 @@ def generate_overall_pdf(data: dict, output_path: Path) -> None:
 
 def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
     totals = data["totals"]
+    client = data.get("client")
     gl_frac = (totals["gain_loss_pct"] / 100) if totals["gain_loss_pct"] is not None else None
 
     # ---- Header band -----------------------------------------------------
@@ -1322,17 +1324,20 @@ def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
     c.setFont("Helvetica-Bold", 14)
     c.drawString(_LM + 14, y - 18, "Fincart Direct Mutual Fund Strategic Portfolio")
     c.setFont("Helvetica", 8)
-    c.drawString(_LM + 14, y - 32, f"Overall Portfolio  |  {totals['n_clients']} Clients")
-    c.drawRightString(_LM + _CW - 14, y - 18, "OVERALL PORTFOLIO FACTSHEET")
+    subtitle = f"{client['name']}  |  UCC: {client['ucc']}" if client else f"Overall Portfolio  |  {totals['n_clients']} Clients"
+    c.drawString(_LM + 14, y - 32, subtitle)
+    c.drawRightString(_LM + _CW - 14, y - 18, "PORTFOLIO FACTSHEET")
     c.setFont("Helvetica-Bold", 11)
     c.drawRightString(_LM + _CW - 14, y - 32, REPORT_DATE.strftime("%B %Y"))
     y -= 62
 
     # ---- KPI strip --------------------------------------------------------
     box_h = 50
+    inception_sub = "Client's first deposit" if client else "Strategy launch date"
+    invested_sub = "Cost basis" if client else "Cost basis, all clients"
     kpis = [
-        ("INCEPTION", data["inception_date"], "Strategy launch date", None),
-        ("TOTAL INVESTED", _fmt_inr(totals["invested"]), "Cost basis, all clients", None),
+        ("INCEPTION", data["inception_date"], inception_sub, None),
+        ("TOTAL INVESTED", _fmt_inr(totals["invested"]), invested_sub, None),
         ("CURRENT VALUE", _fmt_inr(totals["current_value"]), "", None),
         ("GAIN / LOSS", _fmt_inr(totals["gain_loss"]), _fmt_pct(gl_frac) if gl_frac is not None else "N/A", gl_frac),
     ]
@@ -1366,7 +1371,10 @@ def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
     period_labels = perf["period_labels"]
     y = _draw_simple_section(c, y, "PERFORMANCE vs BENCHMARKS  (Since Inception: " + data["inception_date"] + ")")
     header = ["Portfolio / Benchmark"] + period_labels
-    rows = [["Overall Portfolio"] + [_fmt_pct_num(perf["portfolio"].get(p)) for p in period_labels]]
+    # Short label — client names can be long, and this column is narrow;
+    # who it belongs to is already clear from the header band above.
+    portfolio_row_label = "Portfolio" if client else "Overall Portfolio"
+    rows = [[portfolio_row_label] + [_fmt_pct_num(perf["portfolio"].get(p)) for p in period_labels]]
     for bench in perf["benchmarks"]:
         rows.append([bench["name"]] + [_fmt_pct_num(bench["returns"].get(p)) for p in period_labels])
     col_widths = [_CW * 0.32] + [_CW * 0.68 / len(period_labels)] * len(period_labels)
@@ -1390,7 +1398,8 @@ def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
         for f in data["top_holdings"]
     ]
     if holding_rows:
-        y = _draw_simple_section(c, y, "TOP 5 HOLDINGS  (Across All Clients)")
+        holdings_scope = f"({client['name']})" if client else "(Across All Clients)"
+        y = _draw_simple_section(c, y, f"TOP 5 HOLDINGS  {holdings_scope}")
         y = _draw_three_col_table(
             c, y,
             ["Fund", "Current Value", "Weight"],
@@ -1401,9 +1410,9 @@ def _draw_overall_factsheet(c: PdfCanvas, data: dict) -> None:
 
     # ---- Methodology note -----------------------------------------------------
     methodology_text = (
-        "Overall portfolio performance is time-weighted (TWRR-style), projecting each fund's current weight in "
-        "the book backward using its own NAV history — it does not reflect any single client's actual money-weighted "
-        "return, which depends on their individual deposit timing (see the per-client Performance tab for that)."
+        "Portfolio performance is time-weighted (TWRR-style), projecting the fund mix's current weights backward "
+        "using each fund's own NAV history. It does not reflect a money-weighted, cash-flow-timed return, which "
+        "depends on the actual timing of each deposit and withdrawal."
     )
     if y < 110:
         c.showPage()

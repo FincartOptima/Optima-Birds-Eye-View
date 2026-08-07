@@ -10,7 +10,7 @@ fund. To add a new fund, update both places.
 |---|---|
 | `isin` | The fund's ISIN, exactly as it appears in the trade master / custodian holdings CSV. |
 | `fund_name` | A readable name, just for your own reference. Not read by the app. |
-| `category` | One of: `Indian Equity`, `Foreign Equity`, `Gold`, `Debt`, `Cash Fund`. Drives allocation grouping everywhere in the app. |
+| `category` | One of: `Indian Equity`, `Foreign Equity`, `Gold`, `Debt`, `Cash`. Drives allocation grouping everywhere in the app. Liquid/arbitrage funds go under `Cash` too — it's grouped together with literal uninvested cash everywhere in the app. |
 | `source` | Which Google Sheet the fund's price history lives in: `cash`, `gold`, `equity`, or `debt`. |
 | `sheet_fund_name` | The **exact** column header text for that fund in the sheet named above. Must match character-for-character, including spacing/capitalization. |
 
@@ -48,5 +48,5 @@ columns to the Equity/Gold sheets yet.
   `source,debt` in the mapping row, the app looks in the wrong sheet and
   won't find it.
 - **Category spelling**: must be exactly `Indian Equity`, `Foreign Equity`,
-  `Gold`, `Debt`, or `Cash Fund` — anything else won't group correctly on
+  `Gold`, `Debt`, or `Cash` — anything else won't group correctly on
   the dashboards.

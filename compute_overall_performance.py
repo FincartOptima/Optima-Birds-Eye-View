@@ -13,7 +13,13 @@ priced point-to-point, not cashflow-matched.
 
 Portfolio inception is a fixed date (the strategy's launch date), not each
 client's individual first-deposit date — matching how a single-strategy
-factsheet reports "since inception".
+factsheet reports "since inception". This is the aggregate ("Overall") view.
+
+When scoped to a single client (client_id given), the same TWRR-style
+methodology applies to just that client's fund mix, but "Since Inception"
+uses THAT CLIENT's own actual inception date instead of the fixed strategy
+date — using the strategy's 13-Apr-2026 launch date for a client who joined
+later would compute a return over a period before they'd deposited anything.
 """
 from __future__ import annotations
 
@@ -21,7 +27,7 @@ from bisect import bisect_right
 from datetime import datetime, timedelta
 
 import gsheet_data
-from create_client_factsheet_report import CATEGORY_ORDER
+from create_client_factsheet_report import CATEGORY_ORDER, _inception as _resolve_client_inception
 
 PORTFOLIO_INCEPTION = datetime(2026, 4, 13)
 
@@ -56,16 +62,24 @@ def _point_to_point_return(dates: list[datetime], values: list[float], start: da
     return None
 
 
-def _available_periods(report_date: datetime) -> list[tuple[str, int]]:
+def _available_periods(report_date: datetime, inception: datetime) -> list[tuple[str, int]]:
     """Only include periods that have actually elapsed since inception —
     a '6M' column would be meaningless (not wrong, just undefined) for a
-    portfolio that has only existed for 4 months."""
-    elapsed_days = (report_date - PORTFOLIO_INCEPTION).days
+    portfolio/client that has only existed for 4 months."""
+    elapsed_days = (report_date - inception).days
     return [(label, days) for label, days in PERIOD_DAYS if elapsed_days >= days]
 
 
-def get_overall_performance(reports: list, bse_prices: list[tuple], report_date: datetime) -> dict:
-    active_reports = [r for r in reports if r.cost_value > 0]
+def get_overall_performance(reports: list, bse_prices: list[tuple], report_date: datetime, client_id: int | None = None) -> dict:
+    client_info = None
+    if client_id is not None:
+        report = reports[client_id]
+        active_reports = [report] if report.cost_value > 0 else []
+        inception = _resolve_client_inception(report)
+        client_info = {"id": client_id, "name": report.client_name, "ucc": report.ucc}
+    else:
+        active_reports = [r for r in reports if r.cost_value > 0]
+        inception = PORTFOLIO_INCEPTION
 
     # ---- Totals ------------------------------------------------------------
     total_cost = sum(r.cost_value for r in active_reports)
@@ -102,7 +116,7 @@ def get_overall_performance(reports: list, bse_prices: list[tuple], report_date:
     top_holdings = all_funds[:5]
 
     # ---- Performance: portfolio (current-weight NAV projection) + benchmarks ----
-    periods = _available_periods(report_date)
+    periods = _available_periods(report_date, inception)
     period_labels = [label for label, _ in periods] + ["Since Inception"]
 
     mapping = gsheet_data.load_fund_mapping()
@@ -117,7 +131,7 @@ def get_overall_performance(reports: list, bse_prices: list[tuple], report_date:
         start = report_date - timedelta(days=days)
         portfolio_returns[label] = _weighted_portfolio_return(all_funds, total_current, nav_history_by_isin, start, report_date)
     portfolio_returns["Since Inception"] = _weighted_portfolio_return(
-        all_funds, total_current, nav_history_by_isin, PORTFOLIO_INCEPTION, report_date
+        all_funds, total_current, nav_history_by_isin, inception, report_date
     )
 
     bse_dates = [p[0] for p in bse_prices]
@@ -138,12 +152,13 @@ def get_overall_performance(reports: list, bse_prices: list[tuple], report_date:
         for label, days in periods:
             start = report_date - timedelta(days=days)
             row[label] = _point_to_point_return(dates, values, start, report_date)
-        row["Since Inception"] = _point_to_point_return(dates, values, PORTFOLIO_INCEPTION, report_date)
+        row["Since Inception"] = _point_to_point_return(dates, values, inception, report_date)
         benchmark_returns.append({"name": display_name, "returns": row})
 
     return {
         "report_date": report_date.strftime("%d %b %Y"),
-        "inception_date": PORTFOLIO_INCEPTION.strftime("%d %b %Y"),
+        "inception_date": inception.strftime("%d %b %Y"),
+        "client": client_info,
         "totals": {
             "n_clients": len(active_reports),
             "invested": total_cost,

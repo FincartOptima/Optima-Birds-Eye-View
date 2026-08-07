@@ -117,7 +117,6 @@
             <!-- Tab Bar -->
             <div class="tab-bar">
                 <button class="tab-btn active" id="tabClientBtn" onclick="switchTab('client')">Client View</button>
-                <button class="tab-btn" id="tabPerformanceBtn" onclick="switchTab('performance')">Performance</button>
                 <button class="tab-btn" id="tabMasterBtn" onclick="switchTab('master')">Master Dashboard</button>
                 <button class="tab-btn" id="tabConsolidatedBtn" onclick="switchTab('consolidated')">Client Consolidated</button>
                 <button class="tab-btn" id="tabFailedBtn" onclick="switchTab('failed')">Failed Transactions</button>
@@ -278,18 +277,6 @@
 
                 </div><!-- /.factsheet -->
             </div><!-- /#clientTabContent -->
-
-            <!-- PERFORMANCE TAB CONTENT -->
-            <div id="performanceTabContent" style="display:none;">
-                <div class="master-content">
-                    <section class="section">
-                        <h3 class="section-title">Client Performance vs BSE 500</h3>
-                        <p class="section-subtitle">Simple returns since inception, as of <span id="perfReportDate">—</span> &bull; recomputed from live NAV data on every load</p>
-                        <div class="fs-kpis" id="perfInceptionKpis"></div>
-                        <p class="fs-note" id="perfDisclosure" style="margin-top:14px"></p>
-                    </section>
-                </div>
-            </div><!-- /#performanceTabContent -->
 
             <!-- MASTER DASHBOARD TAB CONTENT -->
             <div id="masterTabContent" style="display:none;">
@@ -472,11 +459,22 @@
                         </div>
                     </div>
 
+                    <!-- Overall / per-client selector -->
+                    <div class="search-box" style="max-width:360px;margin:16px 0;">
+                        <label for="overallClientSelect">View:</label>
+                        <div class="select-wrapper">
+                            <select id="overallClientSelect" onchange="onOverallClientChange()">
+                                <option value="">Overall</option>
+                            </select>
+                            <input type="text" id="overallClientSearch" placeholder="Search client..." class="search-input">
+                        </div>
+                    </div>
+
                     <!-- KPI strip -->
                     <div class="fs-kpis" id="overallKpis">
                         <div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>
                     </div>
-                    <p class="fs-note"><strong>Total Invested</strong> is the combined cost basis of currently-held units plus uninvested cash across every client. <strong>Performance vs Benchmarks</strong> below is time-weighted (TWRR-style): it projects today's exact fund mix backward using each fund's own NAV history, so it can be fairly compared point-to-point against each benchmark index. It does not reflect any single client's actual money-weighted return — see that client's own Performance tab for their cash-flow-timed XIRR.</p>
+                    <p class="fs-note" id="overallMethodologyNote"><strong>Total Invested</strong> is the combined cost basis of currently-held units plus uninvested cash across every client. <strong>Performance vs Benchmarks</strong> below is time-weighted (TWRR-style): it projects today's exact fund mix backward using each fund's own NAV history, so it can be fairly compared point-to-point against each benchmark index. It does not reflect money-weighted, cash-flow-timed returns.</p>
 
                     <!-- Strategy Snapshot -->
                     <section class="section">
@@ -534,7 +532,7 @@
                     <!-- Top 5 Holdings -->
                     <section class="section">
                         <h3 class="section-title">Top 5 Holdings</h3>
-                        <p class="section-subtitle">By weight, across all clients combined</p>
+                        <p class="section-subtitle" id="overallTopHoldingsSubtitle">By weight, across all clients combined</p>
                         <div class="pie-chart-panel" style="max-width:800px">
                             <canvas id="overallTopHoldingsChart"></canvas>
                         </div>

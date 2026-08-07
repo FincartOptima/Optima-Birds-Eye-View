@@ -15,6 +15,7 @@ let failedData = null;
 let overallDataLoaded = false;
 let overallTopHoldingsChart = null;
 let overallAllocChart = null;
+let overallSelectedClientId = null;
 let hasMasterFile = false;
 let clientPieChart = null;
 let portfolioPieChart = null;
@@ -26,11 +27,10 @@ const CAT_COLORS = {
     'Foreign Equity': '#3A7CA5',
     'Gold':           '#C5922E',
     'Debt':           '#5DADE2',
-    'Cash Fund':      '#7DCEA0',
-    'Only Cash':      '#A0B4C8',
+    'Cash':           '#7DCEA0',
 };
 function catColor(name, idx) {
-    return CAT_COLORS[name] || ['#14365C','#3A7CA5','#C5922E','#5DADE2','#7DCEA0','#A0B4C8'][idx % 6];
+    return CAT_COLORS[name] || ['#14365C','#3A7CA5','#C5922E','#5DADE2','#7DCEA0'][idx % 5];
 }
 
 // ============================================================
@@ -226,17 +226,14 @@ function initializeUI() {
 
     // Enable/disable tabs that require the trade master
     const clientBtn = document.getElementById('tabClientBtn');
-    const performanceBtn = document.getElementById('tabPerformanceBtn');
     const masterBtn = document.getElementById('tabMasterBtn');
     const failedBtn = document.getElementById('tabFailedBtn');
     const overallBtn = document.getElementById('tabOverallBtn');
     clientBtn.disabled = !hasMasterFile;
-    performanceBtn.disabled = !hasMasterFile;
     masterBtn.disabled = !hasMasterFile;
     failedBtn.disabled = !hasMasterFile;
     overallBtn.disabled = !hasMasterFile;
     clientBtn.classList.toggle('disabled', !hasMasterFile);
-    performanceBtn.classList.toggle('disabled', !hasMasterFile);
     masterBtn.classList.toggle('disabled', !hasMasterFile);
     failedBtn.classList.toggle('disabled', !hasMasterFile);
     overallBtn.classList.toggle('disabled', !hasMasterFile);
@@ -265,7 +262,7 @@ function setupClientSearch() {
 // ============================================================
 
 function switchTab(tab) {
-    if ((tab === 'client' || tab === 'performance' || tab === 'master' || tab === 'failed' || tab === 'overall') && !hasMasterFile) {
+    if ((tab === 'client' || tab === 'master' || tab === 'failed' || tab === 'overall') && !hasMasterFile) {
         showError('This view needs the tradebook. Re-upload including the tradebook Excel file to enable it.');
         return;
     }
@@ -273,7 +270,6 @@ function switchTab(tab) {
 
     const tabs = {
         client:       { btn: 'tabClientBtn',       content: 'clientTabContent' },
-        performance:  { btn: 'tabPerformanceBtn',  content: 'performanceTabContent' },
         master:       { btn: 'tabMasterBtn',       content: 'masterTabContent' },
         consolidated: { btn: 'tabConsolidatedBtn', content: 'consolidatedTabContent' },
         failed:       { btn: 'tabFailedBtn',       content: 'failedTabContent' },
@@ -290,11 +286,10 @@ function switchTab(tab) {
     }
 
     // The client/search toolbar applies to any per-client view
-    const showToolbar = tab === 'client' || tab === 'performance';
+    const showToolbar = tab === 'client';
     document.getElementById('toolbarCenter').style.display = showToolbar ? 'flex' : 'none';
     document.getElementById('toolbarRight').style.display  = showToolbar ? 'flex' : 'none';
 
-    if (tab === 'performance') loadClientPerformance();
     if (tab === 'master' && !masterDataLoaded) loadMasterData();
     if (tab === 'consolidated' && !consolidatedLoaded) loadConsolidated();
     if (tab === 'failed' && !failedDataLoaded) loadFailedTransactions();
@@ -321,52 +316,11 @@ async function loadClient() {
         currentClientId = clientId;
         renderClientData();
         hideLoading();
-        if (activeTab === 'performance') loadClientPerformance();
 
     } catch (error) {
         hideLoading();
         showError(error.message);
     }
-}
-
-// ============================================================
-// Performance Tab (per client, vs BSE 500)
-// ============================================================
-
-async function loadClientPerformance() {
-    if (currentClientId === null) return;
-    const kpis = document.getElementById('perfInceptionKpis');
-    kpis.innerHTML = '<div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>';
-    try {
-        const response = await fetch(`/api/client/${currentClientId}/performance`);
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || 'Failed to load performance data');
-        renderClientPerformance(payload);
-    } catch (error) {
-        kpis.innerHTML = `<div class="fs-kpi"><span class="fs-kpi-label">${error.message}</span></div>`;
-    }
-}
-
-function renderClientPerformance(data) {
-    document.getElementById('perfReportDate').textContent = data.report_date || '—';
-
-    const si = data.since_inception;
-    const inceptionSub = si.inception_date ? `Since ${si.inception_date}` : 'Since inception';
-    const kpi = (label, value, sub) => `
-        <div class="fs-kpi">
-            <span class="fs-kpi-label">${label}</span>
-            <span class="fs-kpi-value ${value != null ? glClass(value) : ''}">${value != null ? signedPct(value) : 'N/A'}</span>
-            <span class="fs-kpi-sub">${sub}</span>
-        </div>`;
-    document.getElementById('perfInceptionKpis').innerHTML =
-        kpi('Client Simple Return', si.client_simple_return, `${inceptionSub} · Cost basis ${formatCurrency(si.cost_basis)}`) +
-        kpi('BSE 500 Simple Return', si.bse_simple_return, `${inceptionSub} · ${si.bse_methodology || ''}`);
-
-    document.getElementById('perfDisclosure').innerHTML =
-        `<strong>Methodology.</strong> Client Simple Return = (Current Value &minus; Cost Basis) &divide; Cost Basis, where Cost Basis is the cost of currently-held units plus uninvested cash, as recorded in the client file. ` +
-        `BSE 500 Simple Return simulates the same deposit / withdrawal schedule into the BSE 500 index. ` +
-        `<strong>Benchmark note.</strong> BSE 500 is a pure-equity index; the client portfolio is multi-asset (equity + gold + debt + cash), so material divergence in either direction should be expected. ` +
-        `For a like-for-like benchmark, a composite index matching the target asset mix would be more appropriate.`;
 }
 
 // ============================================================
@@ -576,6 +530,7 @@ function resetApp() {
     failedDataLoaded = false;
     failedData = null;
     overallDataLoaded = false;
+    overallSelectedClientId = null;
     hasMasterFile = false;
     adjustAllocations = [];
     if (adjustPieChart) { adjustPieChart.destroy(); adjustPieChart = null; }
@@ -758,7 +713,7 @@ function renderMergedMatrix() {
         const catId      = `mc${idx}`;
         const fundsInCat = funds.filter(f => fundCat[f] === cat);
         html += `<tr class="cat-summary-row" onclick="toggleMatrixCat('${catId}')">
-            <td><span class="acc-caret" id="mcaret-${catId}">▸</span><strong>${cat}</strong></td>
+            <td><strong>${cat}</strong></td>
             ${(catData[cat] || []).map(v => heatCell(v, maxCat)).join('')}
         </tr>`;
         fundsInCat.forEach(fund => {
@@ -1353,25 +1308,71 @@ function lockRules() {
 // ============================================================
 
 async function loadOverallPerformance() {
+    if (!overallDataLoaded) {
+        populateOverallClientDropdown();
+        setupOverallClientSearch();
+        overallDataLoaded = true;
+    }
     const body = document.getElementById('overallPerfBody');
     body.innerHTML = '<tr><td colspan="4" class="loading">Loading performance data...</td></tr>';
     try {
-        const response = await fetch('/api/overall-performance');
+        const url = '/api/overall-performance' + (overallSelectedClientId != null ? `?client_id=${overallSelectedClientId}` : '');
+        const response = await fetch(url);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to load overall performance');
-        overallDataLoaded = true;
         renderOverallPerformance(data);
     } catch (error) {
         body.innerHTML = `<tr><td colspan="4" class="loading">${error.message}</td></tr>`;
     }
 }
 
+function populateOverallClientDropdown(filtered) {
+    const select = document.getElementById('overallClientSelect');
+    const list = filtered || clientsList.slice(0, 10);
+    const previousValue = select.value;
+    select.innerHTML = '<option value="">Overall</option>' +
+        list.map(c => `<option value="${c.id}">${c.name} (${c.ucc})</option>`).join('');
+    // Keep the current selection alive across a repopulate (e.g. after a search is cleared)
+    if (list.some(c => String(c.id) === previousValue)) select.value = previousValue;
+    else if (!filtered) select.value = overallSelectedClientId != null ? String(overallSelectedClientId) : '';
+}
+
+function setupOverallClientSearch() {
+    const searchInput = document.getElementById('overallClientSearch');
+    searchInput.addEventListener('input', (e) => {
+        const query = e.target.value.trim().toLowerCase();
+        if (!query) {
+            populateOverallClientDropdown();
+            return;
+        }
+        const matches = clientsList.filter(c =>
+            c.name.toLowerCase().includes(query) || c.ucc.toLowerCase().includes(query)
+        );
+        populateOverallClientDropdown(matches);
+        const select = document.getElementById('overallClientSelect');
+        if (matches.length > 0) select.value = String(matches[0].id);
+    });
+}
+
+function onOverallClientChange() {
+    const select = document.getElementById('overallClientSelect');
+    overallSelectedClientId = select.value === '' ? null : parseInt(select.value);
+    loadOverallPerformance();
+}
+
 function renderOverallPerformance(data) {
     document.getElementById('overallReportDate').textContent = data.report_date || '—';
     document.getElementById('overallInceptionDate').textContent = data.inception_date || '—';
-    document.getElementById('overallSubtitle').textContent = `${data.totals.n_clients} clients combined`;
+
+    const client = data.client;
+    document.getElementById('overallSubtitle').textContent = client
+        ? `${client.name} (${client.ucc})`
+        : `${data.totals.n_clients} clients combined`;
     document.getElementById('overallPerfSubtitle').textContent =
         `Since inception (${data.inception_date}) — recomputed from live NAV & benchmark data on every load`;
+    document.getElementById('overallMethodologyNote').innerHTML = client
+        ? `<strong>Total Invested</strong> is ${client.name}'s cost basis of currently-held units plus uninvested cash. <strong>Performance vs Benchmarks</strong> below is time-weighted (TWRR-style): it projects this client's exact fund mix backward using each fund's own NAV history, anchored to their own inception date, so it can be fairly compared point-to-point against each benchmark index. It does not reflect a money-weighted, cash-flow-timed return.`
+        : `<strong>Total Invested</strong> is the combined cost basis of currently-held units plus uninvested cash across every client. <strong>Performance vs Benchmarks</strong> below is time-weighted (TWRR-style): it projects today's exact fund mix backward using each fund's own NAV history, so it can be fairly compared point-to-point against each benchmark index. It does not reflect money-weighted, cash-flow-timed returns.`;
 
     // ---- KPI strip ----
     const t = data.totals;
@@ -1381,11 +1382,14 @@ function renderOverallPerformance(data) {
             <span class="fs-kpi-value ${colorClass || ''}">${value}</span>
             ${sub ? `<span class="fs-kpi-sub">${sub}</span>` : ''}
         </div>`;
-    document.getElementById('overallKpis').innerHTML =
-        kpi('Total Invested', formatCurrency(t.invested), 'Cost basis, all clients') +
-        kpi('Current Value', formatCurrency(t.current_value), '') +
-        kpi('Gain / Loss', formatCurrency(t.gain_loss), t.gain_loss_pct != null ? signedPct(t.gain_loss_pct) : 'N/A', glClass(t.gain_loss)) +
-        kpi('Clients', t.n_clients, 'Active, cost value > 0');
+    document.getElementById('overallKpis').innerHTML = client
+        ? kpi('Total Invested', formatCurrency(t.invested), 'Cost basis') +
+          kpi('Current Value', formatCurrency(t.current_value), '') +
+          kpi('Gain / Loss', formatCurrency(t.gain_loss), t.gain_loss_pct != null ? signedPct(t.gain_loss_pct) : 'N/A', glClass(t.gain_loss))
+        : kpi('Total Invested', formatCurrency(t.invested), 'Cost basis, all clients') +
+          kpi('Current Value', formatCurrency(t.current_value), '') +
+          kpi('Gain / Loss', formatCurrency(t.gain_loss), t.gain_loss_pct != null ? signedPct(t.gain_loss_pct) : 'N/A', glClass(t.gain_loss)) +
+          kpi('Clients', t.n_clients, 'Active, cost value > 0');
 
     // ---- Performance vs Benchmarks table ----
     const perf = data.performance;
@@ -1397,7 +1401,7 @@ function renderOverallPerformance(data) {
         </tr>`;
     let perfRows = `
         <tr class="bse-row">
-            <td><strong>Overall Portfolio</strong></td>
+            <td><strong>${client ? client.name : 'Overall Portfolio'}</strong></td>
             ${periods.map(p => returnCell(perf.portfolio[p])).join('')}
         </tr>`;
     for (const bench of perf.benchmarks) {
@@ -1457,6 +1461,9 @@ function renderOverallPerformance(data) {
     }
 
     // ---- Top 5 holdings (horizontal bar) ----
+    document.getElementById('overallTopHoldingsSubtitle').textContent = client
+        ? `By weight, for ${client.name}`
+        : 'By weight, across all clients combined';
     if (overallTopHoldingsChart) { overallTopHoldingsChart.destroy(); overallTopHoldingsChart = null; }
     const topCtx = document.getElementById('overallTopHoldingsChart');
     const topHoldings = data.top_holdings || [];
@@ -1497,11 +1504,13 @@ function renderOverallPerformance(data) {
 }
 
 function downloadOverallPDF() {
-    window.location.href = '/api/overall-performance/download_pdf';
+    const q = overallSelectedClientId != null ? `?client_id=${overallSelectedClientId}` : '';
+    window.location.href = '/api/overall-performance/download_pdf' + q;
 }
 
 function downloadOverallPPTX() {
-    window.location.href = '/api/overall-performance/download_pptx';
+    const q = overallSelectedClientId != null ? `?client_id=${overallSelectedClientId}` : '';
+    window.location.href = '/api/overall-performance/download_pptx' + q;
 }
 
 // ============================================================

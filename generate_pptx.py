@@ -128,12 +128,12 @@ def _build_top_holdings_table(slide, top_holdings, left, top, width, row_h=None,
     return graphic_frame
 
 
-def _build_performance_table(slide, performance, left, top, width, row_h=None, font_size=11):
+def _build_performance_table(slide, performance, left, top, width, row_h=None, font_size=11, client=None):
     row_h = row_h or Inches(0.5)
     period_labels = performance["period_labels"]
     filtered_benchmarks = [b for b in performance["benchmarks"] if b["name"] in ("BSE 500", "Nifty 50")]
 
-    rows = 1 + 1 + len(filtered_benchmarks)  # header + Overall Portfolio + filtered benchmarks
+    rows = 1 + 1 + len(filtered_benchmarks)  # header + portfolio row + filtered benchmarks
     cols = 1 + len(period_labels)
     height = row_h * rows
     graphic_frame = slide.shapes.add_table(rows, cols, left, top, width, height)
@@ -146,7 +146,8 @@ def _build_performance_table(slide, performance, left, top, width, row_h=None, f
     for i, label in enumerate(period_labels, start=1):
         _set_cell(table.cell(0, i), label, bold=True, size=font_size + 0.5, color=_WHITE, fill=_DARK_NAVY, align=PP_ALIGN.RIGHT)
 
-    _set_cell(table.cell(1, 0), "Overall Portfolio", bold=True, size=font_size, fill=_CREAM)
+    # Short label — the header/title already says whose portfolio this is
+    _set_cell(table.cell(1, 0), "Portfolio" if client else "Overall Portfolio", bold=True, size=font_size, fill=_CREAM)
     for i, label in enumerate(period_labels, start=1):
         val = performance["portfolio"].get(label)
         _set_cell(table.cell(1, i), _fmt_pct(val), bold=True, size=font_size, fill=_CREAM, color=_return_color(val), align=PP_ALIGN.RIGHT)
@@ -200,7 +201,7 @@ def _rebuild_slide_10(slide, data):
     _build_performance_table(
         slide, data["performance"],
         left_x, perf_table_top, left_w,
-        row_h=Inches(0.5), font_size=12,
+        row_h=Inches(0.5), font_size=12, client=data.get("client"),
     )
 
     # ---- Right column: Top 5 Holdings alone, given the full column height ----
