@@ -231,14 +231,17 @@ function initializeUI() {
     const masterBtn = document.getElementById('tabMasterBtn');
     const failedBtn = document.getElementById('tabFailedBtn');
     const overallBtn = document.getElementById('tabOverallBtn');
+    const mailingBtn = document.getElementById('tabMailingBtn');
     clientBtn.disabled = !hasMasterFile;
     masterBtn.disabled = !hasMasterFile;
     failedBtn.disabled = !hasMasterFile;
     overallBtn.disabled = !hasMasterFile;
+    mailingBtn.disabled = !hasMasterFile;
     clientBtn.classList.toggle('disabled', !hasMasterFile);
     masterBtn.classList.toggle('disabled', !hasMasterFile);
     failedBtn.classList.toggle('disabled', !hasMasterFile);
     overallBtn.classList.toggle('disabled', !hasMasterFile);
+    mailingBtn.classList.toggle('disabled', !hasMasterFile);
 
     // Land on Client Consolidated (always available from the CSV)
     switchTab('consolidated');
@@ -322,7 +325,7 @@ function setupClientSearch() {
 // ============================================================
 
 function switchTab(tab) {
-    if ((tab === 'client' || tab === 'master' || tab === 'failed' || tab === 'overall') && !hasMasterFile) {
+    if ((tab === 'client' || tab === 'master' || tab === 'failed' || tab === 'overall' || tab === 'mailing') && !hasMasterFile) {
         showError('This view needs the tradebook. Re-upload including the tradebook Excel file to enable it.');
         return;
     }
@@ -335,6 +338,7 @@ function switchTab(tab) {
         failed:       { btn: 'tabFailedBtn',       content: 'failedTabContent' },
         rules:        { btn: 'tabRulesBtn',        content: 'rulesTabContent' },
         overall:      { btn: 'tabOverallBtn',      content: 'overallTabContent' },
+        mailing:      { btn: 'tabMailingBtn',      content: 'mailingTabContent' },
     };
 
     for (const [key, ids] of Object.entries(tabs)) {
@@ -355,6 +359,7 @@ function switchTab(tab) {
     if (tab === 'failed' && !failedDataLoaded) loadFailedTransactions();
     if (tab === 'rules') loadRules();
     if (tab === 'overall' && !overallDataLoaded) loadOverallPerformance();
+    if (tab === 'mailing') loadMailingTab();
 }
 
 // ============================================================
@@ -591,6 +596,7 @@ function resetApp() {
     failedData = null;
     overallDataLoaded = false;
     overallSelectedClientId = null;
+    mailingClientsCache = [];
     hasMasterFile = false;
     adjustAllocations = [];
     if (adjustPieChart) { adjustPieChart.destroy(); adjustPieChart = null; }
@@ -1626,6 +1632,124 @@ function downloadOverallPDF() {
 function downloadOverallPPTX() {
     const q = overallSelectedClientId != null ? `?client_id=${overallSelectedClientId}` : '';
     window.location.href = '/api/overall-performance/download_pptx' + q;
+}
+
+// ============================================================
+// Mailing Tab
+// ============================================================
+
+let mailingClientsCache = [];
+
+async function loadMailingTab() {
+    const tbody = document.getElementById('mailingClientsTable');
+    tbody.innerHTML = '<tr><td colspan="4" class="loading">Loading clients...</td></tr>';
+    const statusNote = document.getElementById('mailingStatusNote');
+    statusNote.style.display = 'none';
+
+    try {
+        const [statusResp, clientsResp] = await Promise.all([
+            fetch('/api/mailing/status'),
+            fetch('/api/mailing/clients'),
+        ]);
+        const status = await statusResp.json();
+        const clientsData = await clientsResp.json();
+        if (!clientsResp.ok) throw new Error(clientsData.error || 'Failed to load clients');
+
+        const warnings = [];
+        if (!status.drive_configured) warnings.push('Google Drive is not configured — saved email addresses will not persist.');
+        if (!status.smtp_configured) warnings.push('Email sending is not configured on the server yet — the Send button will show an error until it is.');
+        if (warnings.length > 0) {
+            statusNote.style.display = 'block';
+            statusNote.innerHTML = '<strong>Setup needed:</strong> ' + warnings.join(' ');
+        }
+
+        mailingClientsCache = clientsData.clients || [];
+        renderMailingClients();
+    } catch (error) {
+        tbody.innerHTML = `<tr><td colspan="4" class="loading">${error.message}</td></tr>`;
+    }
+}
+
+function renderMailingClients() {
+    const tbody = document.getElementById('mailingClientsTable');
+    if (mailingClientsCache.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="loading">No clients loaded</td></tr>';
+        return;
+    }
+    tbody.innerHTML = mailingClientsCache.map(c => `
+        <tr data-ucc="${c.ucc}">
+            <td>${c.name}</td>
+            <td>${c.ucc}</td>
+            <td><input type="email" class="search-input" style="width:100%" placeholder="client@example.com" value="${c.email || ''}" onchange="saveClientEmail('${c.ucc}', this)"></td>
+            <td><span class="mailing-save-status" id="save-status-${c.ucc}"></span></td>
+        </tr>`).join('');
+}
+
+async function saveClientEmail(ucc, inputEl) {
+    const email = inputEl.value.trim();
+    const statusEl = document.getElementById(`save-status-${ucc}`);
+    statusEl.textContent = 'Saving…';
+    try {
+        const response = await fetch('/api/mailing/emails', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ucc, email }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Save failed');
+        statusEl.textContent = '✓ Saved';
+        statusEl.style.color = 'var(--success)';
+        const client = mailingClientsCache.find(c => c.ucc === ucc);
+        if (client) client.email = email;
+        setTimeout(() => { statusEl.textContent = ''; }, 2500);
+    } catch (error) {
+        statusEl.textContent = `✗ ${error.message}`;
+        statusEl.style.color = 'var(--danger)';
+    }
+}
+
+async function sendFactsheetEmails() {
+    const withEmail = mailingClientsCache.filter(c => (c.email || '').trim());
+    if (withEmail.length === 0) {
+        showError('No clients have a saved email address yet.');
+        return;
+    }
+    const names = withEmail.map(c => `${c.name} (${c.email})`).join('\n');
+    const confirmed = window.confirm(
+        `This will email the factsheet PDF to ${withEmail.length} client(s):\n\n${names}\n\nThis cannot be undone. Continue?`
+    );
+    if (!confirmed) return;
+
+    const btn = document.getElementById('sendFactsheetsBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+        const response = await fetch('/api/mailing/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Send failed');
+        renderMailingResults(data.results || []);
+    } catch (error) {
+        showError(error.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '✉ Send Factsheets to All Saved Emails';
+    }
+}
+
+function renderMailingResults(results) {
+    const section = document.getElementById('mailingResultsSection');
+    section.style.display = 'block';
+    document.getElementById('mailingResultsTable').innerHTML = results.map(r => `
+        <tr>
+            <td>${r.name}</td>
+            <td>${r.email || '—'}</td>
+            <td style="color:${r.success ? 'var(--success)' : 'var(--danger)'}">${r.success ? '✓ Sent' : '✗ ' + (r.error || 'Failed')}</td>
+        </tr>`).join('');
+    section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 // ============================================================

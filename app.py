@@ -25,7 +25,10 @@ import gdrive_data
 import compute_overall_performance
 import live_market_data
 import data_health
+import email_sender
 from generate_pptx import generate_overall_pptx
+
+CLIENT_EMAILS_FILENAME = "client_emails.json"
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB max file size
@@ -386,6 +389,116 @@ def get_data_health():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mailing/status')
+def mailing_status():
+    """Whether the two things the Mailing tab needs are configured: Drive
+    (to persist client emails — still needs Editor access on the folder,
+    not just the Viewer access the trade-file reads use) and SMTP (to
+    send). This only checks credentials are present, not that a write will
+    actually succeed — a genuine permission gap surfaces with a clear error
+    the first time someone actually saves an email."""
+    return jsonify({
+        'drive_configured': gdrive_data.is_configured(),
+        'smtp_configured': email_sender.is_configured(),
+    })
+
+
+@app.route('/api/mailing/clients')
+def mailing_clients():
+    """Client list for the Mailing tab: every active client plus whatever
+    email address has been saved for them (persisted in Drive as
+    client_emails.json, keyed by UCC so it survives re-uploads)."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+    try:
+        saved_emails = gdrive_data.read_json_file(CLIENT_EMAILS_FILENAME) if gdrive_data.is_configured() else {}
+    except Exception as e:
+        saved_emails = {}
+        print(f"[mailing] Could not read saved emails: {e}")
+
+    reports = reports_cache['reports']
+    clients = [
+        {'id': i, 'ucc': r.ucc, 'name': r.client_name, 'email': saved_emails.get(r.ucc, '')}
+        for i, r in enumerate(reports) if r.cost_value > 0
+    ]
+    return jsonify({'clients': clients})
+
+
+@app.route('/api/mailing/emails', methods=['POST'])
+def save_client_email():
+    """Save (or clear) one client's email address, keyed by UCC."""
+    payload = request.get_json(silent=True) or {}
+    ucc = (payload.get('ucc') or '').strip()
+    email = (payload.get('email') or '').strip()
+    if not ucc:
+        return jsonify({'error': 'Missing ucc'}), 400
+    if email and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        return jsonify({'error': f'"{email}" does not look like a valid email address'}), 400
+
+    try:
+        emails = gdrive_data.read_json_file(CLIENT_EMAILS_FILENAME)
+        if email:
+            emails[ucc] = email
+        else:
+            emails.pop(ucc, None)
+        gdrive_data.write_json_file(CLIENT_EMAILS_FILENAME, emails)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/mailing/send', methods=['POST'])
+def send_factsheet_emails():
+    """Generate and email each requested client's factsheet PDF. Every
+    recipient is attempted independently — one failure (bad address, SMTP
+    hiccup) doesn't stop the rest of the batch."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+    if not email_sender.is_configured():
+        return jsonify({'error': 'Email sending is not configured on this server (SMTP_EMAIL / SMTP_APP_PASSWORD not set).'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    requested_uccs = payload.get('uccs')  # None = everyone with a saved email
+
+    try:
+        saved_emails = gdrive_data.read_json_file(CLIENT_EMAILS_FILENAME) if gdrive_data.is_configured() else {}
+    except Exception as e:
+        return jsonify({'error': f'Could not read saved email addresses: {e}'}), 400
+
+    reports = reports_cache['reports']
+    active_reports = [r for r in reports if r.cost_value > 0]
+    if requested_uccs is not None:
+        targets = [r for r in active_reports if r.ucc in requested_uccs]
+    else:
+        targets = [r for r in active_reports if saved_emails.get(r.ucc)]
+
+    report_month = get_report_date().strftime('%B %Y')
+    results = []
+    for r in targets:
+        email = saved_emails.get(r.ucc, '').strip()
+        result = {'ucc': r.ucc, 'name': r.client_name, 'email': email}
+        if not email:
+            result.update(success=False, error='No email address saved for this client')
+            results.append(result)
+            continue
+        try:
+            temp_pdf_path = str(_TEMP_DIR / f"temp_mail_{r.ucc}.pdf")
+            generate_client_pdf(r, Path(temp_pdf_path))
+            with open(temp_pdf_path, 'rb') as f:
+                pdf_bytes = f.read()
+            os.remove(temp_pdf_path)
+
+            safe_name = r.client_name.replace(' ', '_').replace('/', '_')
+            pdf_filename = f"{safe_name}_Factsheet_{get_report_date().strftime('%b_%Y')}.pdf"
+            email_sender.send_factsheet_email(email, r.client_name, pdf_bytes, pdf_filename, report_month)
+            result.update(success=True, error=None)
+        except Exception as e:
+            result.update(success=False, error=str(e))
+        results.append(result)
+
+    return jsonify({'results': results})
 
 
 @app.route('/api/load-from-drive', methods=['POST'])

@@ -3,8 +3,12 @@ Drive folder, so the webpage can show live data without anyone manually
 uploading files. Whoever manages the data just replaces the same-named file
 in the Drive folder; the site picks up the new version on its next refresh.
 
-Auth: a Google Cloud service account with read-only Drive access. The folder
-must be shared with the service account's email as Viewer.
+Auth: a Google Cloud service account. The folder must be shared with the
+service account's email as Viewer for the trade-file reads above — but the
+Mailing tab's client-email storage (client_emails.json, in this same
+folder) needs the service account to be able to WRITE too, which needs the
+folder shared as Editor (or Content Manager) instead of Viewer. Same
+service account either way, just a higher role on the same folder.
 
 Credentials, in order of precedence:
   1. GDRIVE_SERVICE_ACCOUNT_JSON env var — the full JSON key content (used on
@@ -26,9 +30,13 @@ from pathlib import Path
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 
-SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
+# Full (not read-only) scope — needed so the client-email JSON file can be
+# written once the folder is shared as Editor. Requesting the broader scope
+# is harmless even while the folder is still Viewer-only; the actual write
+# still gets rejected at the Drive permission layer until that's bumped.
+SCOPES = ['https://www.googleapis.com/auth/drive']
 _DEFAULT_KEY_PATH = Path(__file__).resolve().parent / "credentials" / "gdrive_service_account.json"
 _DEFAULT_FOLDER_ID = "1ofUZU0HeEkq3F-A1O_WtBrufYouARPc8"
 
@@ -124,3 +132,45 @@ def fetch_files(force: bool = False) -> dict[str, tuple[bytes, str]]:
 
     _cache["_all"] = (now, result)
     return result
+
+
+def read_json_file(filename: str) -> dict:
+    """Read a JSON file by exact name from the shared folder. Returns {} if
+    the file doesn't exist yet (e.g. before the first save)."""
+    service = _get_service()
+    drive_files = _list_folder_files(service)
+    found = next((f for f in drive_files if f["name"].strip().lower() == filename.strip().lower()), None)
+    if not found:
+        return {}
+    content = _download_bytes(service, found["id"])
+    return json.loads(content.decode("utf-8")) if content.strip() else {}
+
+
+def write_json_file(filename: str, data: dict) -> None:
+    """Create or update a JSON file by exact name in the shared folder.
+    Requires the folder to be shared with the service account as Editor
+    (not just Viewer) — raises a clear error otherwise."""
+    service = _get_service()
+    drive_files = _list_folder_files(service)
+    found = next((f for f in drive_files if f["name"].strip().lower() == filename.strip().lower()), None)
+
+    payload = json.dumps(data, indent=2).encode("utf-8")
+    media = MediaIoBaseUpload(io.BytesIO(payload), mimetype="application/json")
+
+    try:
+        if found:
+            service.files().update(fileId=found["id"], media_body=media).execute()
+        else:
+            service.files().create(
+                body={"name": filename, "parents": [_folder_id()]},
+                media_body=media,
+                fields="id",
+            ).execute()
+    except Exception as e:
+        if "insufficientParentPermissions" in str(e) or "insufficient permissions" in str(e).lower():
+            raise ValueError(
+                "The Drive folder is shared with the service account as Viewer, which allows reading "
+                "the trade files but not writing this file. Share the folder with the service account "
+                "as Editor (or Content Manager) to enable saving."
+            ) from e
+        raise
