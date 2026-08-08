@@ -1329,16 +1329,6 @@ function loadRules() {
     }
 }
 
-const MARKET_INPUTS_STORAGE_KEY = 'bev_market_inputs';
-
-function getSavedMarketInputs() {
-    try {
-        return JSON.parse(localStorage.getItem(MARKET_INPUTS_STORAGE_KEY)) || {};
-    } catch (e) {
-        return {};
-    }
-}
-
 async function loadMarketStatus() {
     const tbody = document.getElementById('marketInputsTable');
     tbody.innerHTML = '<tr><td colspan="3" class="loading">Loading…</td></tr>';
@@ -1355,7 +1345,14 @@ async function loadMarketStatus() {
         livePeNote = `Live fetch failed: ${error.message}`;
     }
 
-    const saved = getSavedMarketInputs();
+    let saved = {};
+    try {
+        const response = await fetch('/api/market-inputs');
+        saved = await response.json();
+    } catch (error) {
+        console.error('Could not load saved Market Inputs:', error);
+    }
+
     const lastRow = RULES_HISTORY[RULES_HISTORY.length - 1];
 
     const fields = [
@@ -1407,19 +1404,32 @@ function updateMarketDerived() {
         kpi('Tactical Tilt (via Ratio)', tilt, 'Below 7.5 maximise equity, above 13 maximise gold');
 }
 
-function saveMarketInputs() {
+async function saveMarketInputs() {
     const keys = ['pe', 'inflation', 'real_gdp', 'ratio', 'roc', 'dema200'];
     const data = {};
     keys.forEach(k => {
         const el = document.getElementById(`mi-${k}`);
         if (el) data[k] = el.value;
     });
-    localStorage.setItem(MARKET_INPUTS_STORAGE_KEY, JSON.stringify(data));
 
     const status = document.getElementById('marketInputsSaveStatus');
-    status.textContent = '✓ Saved';
-    status.style.color = 'var(--success)';
-    setTimeout(() => { status.textContent = ''; }, 2500);
+    status.textContent = 'Saving…';
+    status.style.color = 'var(--text-med)';
+    try {
+        const response = await fetch('/api/market-inputs', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Save failed');
+        status.textContent = '✓ Saved';
+        status.style.color = 'var(--success)';
+        setTimeout(() => { status.textContent = ''; }, 2500);
+    } catch (error) {
+        status.textContent = `✗ ${error.message}`;
+        status.style.color = 'var(--danger)';
+    }
 }
 
 function unlockRules() {

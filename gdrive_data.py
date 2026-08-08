@@ -173,4 +173,12 @@ def write_json_file(filename: str, data: dict) -> None:
                 "the trade files but not writing this file. Share the folder with the service account "
                 "as Editor (or Content Manager) to enable saving."
             ) from e
+        if "storageQuotaExceeded" in str(e) or "storage quota" in str(e).lower():
+            raise ValueError(
+                f"'{filename}' doesn't exist in the Drive folder yet, and the service account has no "
+                "storage quota of its own to create a brand-new file (a Google Drive limitation). "
+                f"Fix: in the Drive folder, manually create an empty file named exactly '{filename}' "
+                "containing just {} — once it exists, this same save will update its contents instead "
+                "of creating it, which works fine under the service account's Editor access."
+            ) from e
         raise

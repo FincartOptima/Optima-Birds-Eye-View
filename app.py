@@ -29,6 +29,7 @@ import email_sender
 from generate_pptx import generate_overall_pptx
 
 CLIENT_EMAILS_FILENAME = "client_emails.json"
+MARKET_INPUTS_FILENAME = "market_inputs.json"
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100 MB max file size
@@ -368,13 +369,46 @@ def drive_status():
 
 @app.route('/api/live-market-status')
 def live_market_status():
-    """Live Nifty P/E (scraped fresh, short server-side cache) + the current
-    regime it implies, plus the manually-updated inflation figure. Needs no
-    uploaded data — available independent of reports_cache."""
+    """Live Nifty P/E (scraped fresh, short server-side cache) — used to
+    seed the Market Inputs panel's P/E field with a live starting value.
+    Needs no uploaded data — available independent of reports_cache."""
     try:
         return jsonify(live_market_data.get_market_status(force=request.args.get('force') == '1'))
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/market-inputs')
+def get_market_inputs():
+    """Saved Market Inputs (Inflation, Real GDP, BSE500/XAU Ratio, ROC,
+    200 Day EMA, and any manual P/E override) — shared across everyone who
+    opens the site, stored in Drive as market_inputs.json. Returns {} if
+    nothing has been saved yet."""
+    try:
+        data = gdrive_data.read_json_file(MARKET_INPUTS_FILENAME) if gdrive_data.is_configured() else {}
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/api/market-inputs', methods=['POST'])
+def save_market_inputs():
+    """Overwrite the saved Market Inputs. Any of the 6 fields can be
+    omitted from the payload — only the ones sent are updated, the rest
+    keep their previously-saved value."""
+    payload = request.get_json(silent=True) or {}
+    allowed_keys = {'pe', 'inflation', 'real_gdp', 'ratio', 'roc', 'dema200'}
+    updates = {k: v for k, v in payload.items() if k in allowed_keys}
+    if not updates:
+        return jsonify({'error': 'No recognised fields in request body'}), 400
+
+    try:
+        current = gdrive_data.read_json_file(MARKET_INPUTS_FILENAME)
+        current.update(updates)
+        gdrive_data.write_json_file(MARKET_INPUTS_FILENAME, current)
+        return jsonify({'success': True, 'data': current})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 400
 
 
 @app.route('/api/data-health')
