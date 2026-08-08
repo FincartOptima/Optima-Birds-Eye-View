@@ -23,6 +23,8 @@ import csv as csv_mod
 import gsheet_data
 import gdrive_data
 import compute_overall_performance
+import live_market_data
+import data_health
 from generate_pptx import generate_overall_pptx
 
 app = Flask(__name__)
@@ -140,6 +142,7 @@ def _process_uploaded_files(snap_path, xlsx_path, custodian_path):
         reports_cache['csv_path'] = snap_path
         current_navs, category_overrides = read_client_file_csv(Path(snap_path))
         snap_date, snapshot_holdings, snapshot_cash = read_snapshot_details(Path(snap_path))
+        reports_cache['snapshot_holding_date'] = snap_date.isoformat() if snap_date else None
         print(f"Snapshot NAVs: {len(current_navs)}, holding date: {snap_date}")
 
     # ---- Account statement (optional) ----
@@ -358,6 +361,31 @@ def drive_status():
     """Tell the frontend whether Drive auto-load is configured on this
     deployment, so it knows whether to show the 'Load from Drive' button."""
     return jsonify({'configured': gdrive_data.is_configured()})
+
+
+@app.route('/api/live-market-status')
+def live_market_status():
+    """Live Nifty P/E (scraped fresh, short server-side cache) + the current
+    regime it implies, plus the manually-updated inflation figure. Needs no
+    uploaded data — available independent of reports_cache."""
+    try:
+        return jsonify(live_market_data.get_market_status(force=request.args.get('force') == '1'))
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/data-health')
+def get_data_health():
+    """Data freshness check: when the data was fetched/dated, and whether
+    any live NAV/benchmark feed has gone stale without anyone noticing."""
+    if 'reports' not in reports_cache:
+        return jsonify({'error': 'No data loaded. Please upload a file first.'}), 400
+    try:
+        return jsonify(data_health.check_data_health(reports_cache))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/load-from-drive', methods=['POST'])

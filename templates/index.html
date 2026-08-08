@@ -92,6 +92,13 @@
                     <button class="btn btn-secondary" onclick="resetApp()">
                         ↻ Upload Different File
                     </button>
+                    <div class="data-health-wrap">
+                        <button class="data-health-badge" id="dataHealthBadge" onclick="toggleDataHealthPanel()">
+                            <span id="dataHealthDot" class="data-health-dot"></span>
+                            <span id="dataHealthLabel">Checking data…</span>
+                        </button>
+                        <div class="data-health-panel" id="dataHealthPanel" style="display:none;"></div>
+                    </div>
                 </div>
                 <div class="toolbar-center" id="toolbarCenter">
                     <div class="search-box">
@@ -396,6 +403,14 @@
             <div id="rulesTabContent" style="display:none;">
                 <div class="master-content">
                     <section class="section">
+                        <h3 class="section-title">Current Market Status</h3>
+                        <p class="section-subtitle">Live Nifty P/E vs the Base Risk Profile rule &mdash; refreshed on every load</p>
+                        <div class="fs-kpis" id="marketStatusKpis">
+                            <div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>
+                        </div>
+                    </section>
+
+                    <section class="section">
                         <h3 class="section-title">Rules History (Source Model)</h3>
                         <p class="section-subtitle">Every historical review point from the Black &amp; Litterman rules model &mdash; the data each profile / tilt call was based on.</p>
                         <div class="table-responsive">
@@ -505,6 +520,16 @@
                                 </tbody>
                             </table>
                         </div>
+                    </section>
+
+                    <!-- Risk Metrics -->
+                    <section class="section">
+                        <h3 class="section-title">Risk Metrics</h3>
+                        <p class="section-subtitle" id="overallRiskSubtitle">Since inception, based on the daily reconstructed portfolio value</p>
+                        <div class="fs-kpis" id="overallRiskKpis">
+                            <div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>
+                        </div>
+                        <p class="fs-note" id="overallRiskNote" style="display:none;"></p>
                     </section>
 
                     <!-- Asset Allocation -->

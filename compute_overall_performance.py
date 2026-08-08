@@ -23,6 +23,7 @@ later would compute a return over a period before they'd deposited anything.
 """
 from __future__ import annotations
 
+import statistics
 from bisect import bisect_right
 from datetime import datetime, timedelta
 
@@ -30,6 +31,12 @@ import gsheet_data
 from create_client_factsheet_report import CATEGORY_ORDER, _inception as _resolve_client_inception
 
 PORTFOLIO_INCEPTION = datetime(2026, 4, 13)
+
+# Used only for the Sharpe ratio — a fixed assumption (roughly a short-term
+# G-Sec/T-bill yield), not a live rate. Clearly labelled wherever it's shown.
+ASSUMED_RISK_FREE_RATE_PCT = 6.5
+_TRADING_DAYS_PER_YEAR = 252
+_MIN_RISK_METRIC_DATA_POINTS = 20
 
 PERIOD_DAYS: list[tuple[str, int]] = [
     ("1M", 30),
@@ -155,6 +162,8 @@ def get_overall_performance(reports: list, bse_prices: list[tuple], report_date:
         row["Since Inception"] = _point_to_point_return(dates, values, inception, report_date)
         benchmark_returns.append({"name": display_name, "returns": row})
 
+    risk_metrics = _compute_risk_metrics(all_funds, total_current, nav_history_by_isin, inception, report_date)
+
     return {
         "report_date": report_date.strftime("%d %b %Y"),
         "inception_date": inception.strftime("%d %b %Y"),
@@ -174,6 +183,7 @@ def get_overall_performance(reports: list, bse_prices: list[tuple], report_date:
             "portfolio": portfolio_returns,
             "benchmarks": benchmark_returns,
         },
+        "risk_metrics": risk_metrics,
     }
 
 
@@ -197,3 +207,80 @@ def _weighted_portfolio_return(all_funds, total_current, nav_history_by_isin, st
     if covered_weight <= 0:
         return None
     return round(weighted_sum / covered_weight, 2)
+
+
+def _compute_risk_metrics(all_funds: list[dict], total_current: float, nav_history_by_isin: dict, inception: datetime, report_date: datetime) -> dict:
+    """Volatility, max drawdown, and Sharpe ratio since inception.
+
+    Reconstructs a daily portfolio value series by holding TODAY's exact
+    units constant across history (same current-holdings-projected
+    convention as the return figures elsewhere on this tab), using each
+    fund's own NAV calendar as the source of trading dates — a fund's
+    calendar is used directly instead of a shared reference index so funds
+    that only report on their own days (rather than every BSE trading day)
+    still contribute correctly.
+    """
+    if total_current <= 0:
+        return {"available": False, "reason": "No current portfolio value to compute risk metrics from."}
+
+    priced_funds = [f for f in all_funds if nav_history_by_isin.get(f["isin"], {}).get("dates")]
+    covered_weight = sum(f["value"] for f in priced_funds) / total_current if total_current else 0.0
+    if not priced_funds or covered_weight < 0.5:
+        return {"available": False, "reason": "Not enough funds have priceable NAV history to compute risk metrics reliably."}
+
+    all_dates = sorted({d for f in priced_funds for d in nav_history_by_isin[f["isin"]]["dates"] if inception <= d <= report_date})
+    if len(all_dates) < _MIN_RISK_METRIC_DATA_POINTS:
+        return {
+            "available": False,
+            "reason": f"Only {len(all_dates)} trading days of history since inception — too short a window for a reliable estimate.",
+        }
+
+    # Units held today, per fund, expressed relative to total_current so the
+    # reconstructed series is denominated in the same currency terms as the
+    # portfolio's actual current value.
+    fund_weights = {f["isin"]: f["value"] / total_current for f in priced_funds}
+
+    values: list[float] = []
+    for d in all_dates:
+        v = 0.0
+        for f in priced_funds:
+            hist = nav_history_by_isin[f["isin"]]
+            nav_then = _value_on_or_before(hist["dates"], hist["values"], d)
+            nav_now = _value_on_or_before(hist["dates"], hist["values"], report_date)
+            if nav_then and nav_now and nav_now > 0:
+                v += fund_weights[f["isin"]] * (nav_then / nav_now)
+        values.append(v)
+
+    daily_returns = [(values[i] / values[i - 1] - 1) for i in range(1, len(values)) if values[i - 1] > 0]
+    if len(daily_returns) < _MIN_RISK_METRIC_DATA_POINTS - 1:
+        return {"available": False, "reason": "Not enough valid daily return observations to compute risk metrics reliably."}
+
+    mean_daily = statistics.mean(daily_returns)
+    std_daily = statistics.pstdev(daily_returns) if len(daily_returns) > 1 else 0.0
+    annualized_volatility_pct = std_daily * (_TRADING_DAYS_PER_YEAR ** 0.5) * 100
+    annualized_return_pct = mean_daily * _TRADING_DAYS_PER_YEAR * 100
+
+    peak = values[0]
+    max_drawdown = 0.0
+    for v in values:
+        peak = max(peak, v)
+        if peak > 0:
+            max_drawdown = min(max_drawdown, v / peak - 1)
+
+    sharpe_ratio = (
+        (annualized_return_pct - ASSUMED_RISK_FREE_RATE_PCT) / annualized_volatility_pct
+        if annualized_volatility_pct > 0 else None
+    )
+
+    days_of_history = (all_dates[-1] - all_dates[0]).days
+    return {
+        "available": True,
+        "volatility_annualized_pct": round(annualized_volatility_pct, 2),
+        "max_drawdown_pct": round(max_drawdown * 100, 2),
+        "sharpe_ratio": round(sharpe_ratio, 2) if sharpe_ratio is not None else None,
+        "risk_free_rate_assumed_pct": ASSUMED_RISK_FREE_RATE_PCT,
+        "data_points": len(values),
+        "period_start": all_dates[0].strftime("%d %b %Y"),
+        "period_end": all_dates[-1].strftime("%d %b %Y"),
+        "short_history_caveat": days_of_history < 365,
+    }

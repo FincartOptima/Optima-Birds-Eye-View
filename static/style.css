@@ -189,6 +189,79 @@ body {
     gap: 15px;
 }
 
+.data-health-wrap {
+    position: relative;
+}
+
+.data-health-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--white);
+    font-size: 0.85rem;
+    color: var(--text-med);
+    cursor: pointer;
+}
+
+.data-health-badge:hover {
+    background: var(--light-blue);
+}
+
+.data-health-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--text-light);
+    flex-shrink: 0;
+}
+
+.data-health-dot.ok { background: var(--success); }
+.data-health-dot.warning { background: var(--gold); }
+.data-health-dot.error { background: var(--danger); }
+
+.data-health-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    width: 380px;
+    max-width: 90vw;
+    background: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    padding: 14px 16px;
+    font-size: 0.82rem;
+    color: var(--text-dark);
+}
+
+.data-health-panel dl {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 10px;
+    margin: 0 0 10px;
+}
+
+.data-health-panel dt {
+    color: var(--text-med);
+    font-weight: 600;
+}
+
+.data-health-issue {
+    border-left: 3px solid var(--gold);
+    padding: 6px 10px;
+    margin-bottom: 6px;
+    background: var(--light-bg);
+    border-radius: 4px;
+}
+
+.data-health-issue.error {
+    border-left-color: var(--danger);
+}
+
 .toolbar-center {
     flex: 1;
     min-width: 300px;

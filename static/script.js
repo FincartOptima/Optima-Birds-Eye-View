@@ -207,6 +207,8 @@ function initializeUI() {
     document.getElementById('uploadSection').style.display = 'none';
     document.getElementById('mainSection').style.display = 'block';
 
+    loadDataHealth();
+
     // Populate client select
     const select = document.getElementById('clientSelect');
     select.innerHTML = '';
@@ -241,6 +243,64 @@ function initializeUI() {
     // Land on Client Consolidated (always available from the CSV)
     switchTab('consolidated');
 }
+
+// ============================================================
+// Data Health Indicator
+// ============================================================
+
+async function loadDataHealth() {
+    try {
+        const response = await fetch('/api/data-health');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load data health');
+        renderDataHealth(data);
+    } catch (error) {
+        document.getElementById('dataHealthDot').className = 'data-health-dot';
+        document.getElementById('dataHealthLabel').textContent = 'Data check unavailable';
+    }
+}
+
+function renderDataHealth(data) {
+    const dot = document.getElementById('dataHealthDot');
+    const label = document.getElementById('dataHealthLabel');
+    dot.className = 'data-health-dot ' + data.overall_severity;
+    label.textContent = data.overall_severity === 'ok'
+        ? 'Data OK'
+        : `${data.issues.length} data issue${data.issues.length === 1 ? '' : 's'}`;
+
+    const fmtDate = (iso) => {
+        if (!iso) return 'unknown';
+        const d = new Date(iso);
+        return isNaN(d) ? iso : d.toLocaleString();
+    };
+
+    const issuesHtml = data.issues.length > 0
+        ? data.issues.map(i => `<div class="data-health-issue ${i.severity}"><strong>${i.source}</strong><br>${i.message}</div>`).join('')
+        : '<div class="data-health-issue" style="border-left-color:var(--success)">No issues detected.</div>';
+
+    document.getElementById('dataHealthPanel').innerHTML = `
+        <dl>
+            <dt>Checked</dt><dd>${data.checked_at}</dd>
+            <dt>Files fetched</dt><dd>${fmtDate(data.upload_time)}</dd>
+            <dt>Snapshot dated</dt><dd>${fmtDate(data.snapshot_holding_date)}</dd>
+            <dt>Funds checked</dt><dd>${data.funds_checked} (${data.funds_stale} stale)</dd>
+            <dt>BSE 500 latest</dt><dd>${data.bse_500_latest_date || 'unknown'}</dd>
+        </dl>
+        ${issuesHtml}
+    `;
+}
+
+function toggleDataHealthPanel() {
+    const panel = document.getElementById('dataHealthPanel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+document.addEventListener('click', (e) => {
+    const wrap = document.querySelector('.data-health-wrap');
+    if (wrap && !wrap.contains(e.target)) {
+        document.getElementById('dataHealthPanel').style.display = 'none';
+    }
+});
 
 function setupClientSearch() {
     const searchInput = document.getElementById('clientSearch');
@@ -1254,12 +1314,47 @@ function renderRulesMarkup(text) {
 
 function loadRules() {
     renderRulesHistory();
+    loadMarketStatus();
     // Always render the current (read-only) view when the tab is opened.
     if (!rulesUnlocked) {
         document.getElementById('rulesView').innerHTML = renderRulesMarkup(getRulesText());
         document.getElementById('rulesView').style.display = 'block';
         document.getElementById('rulesEditor').style.display = 'none';
     }
+}
+
+async function loadMarketStatus() {
+    const el = document.getElementById('marketStatusKpis');
+    el.innerHTML = '<div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>';
+    try {
+        const response = await fetch('/api/live-market-status');
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Failed to load market status');
+        renderMarketStatus(data);
+    } catch (error) {
+        el.innerHTML = `<div class="fs-kpi"><span class="fs-kpi-label">${error.message}</span></div>`;
+    }
+}
+
+function renderMarketStatus(data) {
+    const el = document.getElementById('marketStatusKpis');
+    const kpi = (label, value, sub) => `
+        <div class="fs-kpi">
+            <span class="fs-kpi-label">${label}</span>
+            <span class="fs-kpi-value">${value}</span>
+            <span class="fs-kpi-sub">${sub}</span>
+        </div>`;
+
+    const peValue = data.nifty_pe != null ? data.nifty_pe.toFixed(2) : 'N/A';
+    const peSub = data.nifty_pe_error
+        ? `Fetch failed: ${data.nifty_pe_error}`
+        : `Live from ${data.nifty_pe_source}, just now`;
+    const regimeValue = data.nifty_pe_regime || 'N/A';
+
+    el.innerHTML =
+        kpi('Nifty 50 P/E', peValue, peSub) +
+        kpi('Implied Regime', regimeValue, 'Per Base Risk Profile rule (below 20 Aggressive, 20–50 Moderate, above 50 Conservative)') +
+        kpi('Inflation (CPI)', `${data.inflation_pct.toFixed(2)}%`, `${data.inflation_as_of} — ${data.inflation_source}`);
 }
 
 function unlockRules() {
@@ -1412,6 +1507,26 @@ function renderOverallPerformance(data) {
             </tr>`;
     }
     document.getElementById('overallPerfBody').innerHTML = perfRows;
+
+    // ---- Risk metrics ----
+    const rm = data.risk_metrics;
+    const riskKpisEl = document.getElementById('overallRiskKpis');
+    const riskNoteEl = document.getElementById('overallRiskNote');
+    if (rm && rm.available) {
+        riskKpisEl.innerHTML =
+            kpi('Volatility (Annualised)', `${rm.volatility_annualized_pct.toFixed(2)}%`, `${rm.data_points} trading days, ${rm.period_start} – ${rm.period_end}`) +
+            kpi('Max Drawdown', `${rm.max_drawdown_pct.toFixed(2)}%`, 'Largest peak-to-trough decline in that window') +
+            kpi('Sharpe Ratio', rm.sharpe_ratio != null ? rm.sharpe_ratio.toFixed(2) : 'N/A', `Assumes a ${rm.risk_free_rate_assumed_pct}% risk-free rate`);
+        if (rm.short_history_caveat) {
+            riskNoteEl.style.display = 'block';
+            riskNoteEl.innerHTML = '<strong>Short history caveat.</strong> These figures are based on less than a year of data, so they are statistically noisy — treat them as indicative, not definitive, until more history accumulates.';
+        } else {
+            riskNoteEl.style.display = 'none';
+        }
+    } else {
+        riskKpisEl.innerHTML = `<div class="fs-kpi"><span class="fs-kpi-label">Not available</span><span class="fs-kpi-sub">${rm ? rm.reason : 'No data'}</span></div>`;
+        riskNoteEl.style.display = 'none';
+    }
 
     // ---- Asset allocation ----
     const allocRows = (data.asset_allocation || []).map(a => `
