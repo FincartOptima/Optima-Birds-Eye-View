@@ -1329,21 +1329,71 @@ function loadRules() {
     }
 }
 
-async function loadMarketStatus() {
-    const el = document.getElementById('marketStatusKpis');
-    el.innerHTML = '<div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>';
+const MARKET_INPUTS_STORAGE_KEY = 'bev_market_inputs';
+
+function getSavedMarketInputs() {
     try {
-        const response = await fetch('/api/live-market-status');
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Failed to load market status');
-        renderMarketStatus(data);
-    } catch (error) {
-        el.innerHTML = `<div class="fs-kpi"><span class="fs-kpi-label">${error.message}</span></div>`;
+        return JSON.parse(localStorage.getItem(MARKET_INPUTS_STORAGE_KEY)) || {};
+    } catch (e) {
+        return {};
     }
 }
 
-function renderMarketStatus(data) {
-    const el = document.getElementById('marketStatusKpis');
+async function loadMarketStatus() {
+    const tbody = document.getElementById('marketInputsTable');
+    tbody.innerHTML = '<tr><td colspan="3" class="loading">Loading…</td></tr>';
+
+    let livePe = null, livePeNote = '';
+    try {
+        const response = await fetch('/api/live-market-status');
+        const data = await response.json();
+        livePe = data.nifty_pe;
+        livePeNote = data.nifty_pe_error
+            ? `Live fetch failed: ${data.nifty_pe_error}`
+            : `Live from ${data.nifty_pe_source} — overwrite to use your own value`;
+    } catch (error) {
+        livePeNote = `Live fetch failed: ${error.message}`;
+    }
+
+    const saved = getSavedMarketInputs();
+    const lastRow = RULES_HISTORY[RULES_HISTORY.length - 1];
+
+    const fields = [
+        { key: 'pe', label: 'Nifty 50 P/E', note: livePeNote, fallback: livePe },
+        { key: 'inflation', label: 'Inflation (CPI %)', note: 'Not live — investing.com blocks automated fetches', fallback: lastRow.infl },
+        { key: 'real_gdp', label: 'Real GDP (%)', note: 'Manually entered', fallback: lastRow.gdp },
+        { key: 'ratio', label: 'BSE 500 / XAU Ratio', note: 'Manually entered', fallback: lastRow.ratio },
+        { key: 'roc', label: 'ROC', note: 'Manually entered', fallback: lastRow.roc },
+        { key: 'dema200', label: '200 Day EMA (Nifty P/E)', note: 'Manually entered, from Screener', fallback: '' },
+    ];
+
+    tbody.innerHTML = fields.map(f => {
+        const value = saved[f.key] !== undefined && saved[f.key] !== '' ? saved[f.key] : (f.fallback ?? '');
+        return `
+        <tr>
+            <td><strong>${f.label}</strong></td>
+            <td><input type="number" step="0.01" class="search-input" id="mi-${f.key}" value="${value}" oninput="updateMarketDerived()" style="width:120px"></td>
+            <td style="font-size:0.8rem;color:var(--text-med)">${f.note}</td>
+        </tr>`;
+    }).join('');
+
+    updateMarketDerived();
+}
+
+function updateMarketDerived() {
+    const num = (id) => {
+        const el = document.getElementById(id);
+        const v = el ? parseFloat(el.value) : NaN;
+        return isNaN(v) ? null : v;
+    };
+    const pe = num('mi-pe');
+    const roc = num('mi-roc');
+    const ratio = num('mi-ratio');
+
+    const peRegime = pe == null ? 'N/A' : (pe < 20 ? 'Aggressive' : pe <= 50 ? 'Moderate' : 'Conservative');
+    const rocRegime = roc == null ? 'N/A' : (roc < 0 ? 'Aggressive' : roc > 50 ? 'Conservative' : 'Moderate');
+    const tilt = ratio == null ? 'N/A' : (ratio < 7.5 ? 'Maximise Equity' : ratio > 13 ? 'Maximise Gold' : 'Neutral');
+
     const kpi = (label, value, sub) => `
         <div class="fs-kpi">
             <span class="fs-kpi-label">${label}</span>
@@ -1351,16 +1401,25 @@ function renderMarketStatus(data) {
             <span class="fs-kpi-sub">${sub}</span>
         </div>`;
 
-    const peValue = data.nifty_pe != null ? data.nifty_pe.toFixed(2) : 'N/A';
-    const peSub = data.nifty_pe_error
-        ? `Fetch failed: ${data.nifty_pe_error}`
-        : `Live from ${data.nifty_pe_source}, just now`;
-    const regimeValue = data.nifty_pe_regime || 'N/A';
+    document.getElementById('marketStatusKpis').innerHTML =
+        kpi('Regime (via P/E)', peRegime, 'Below 20 Aggressive, 20–50 Moderate, above 50 Conservative') +
+        kpi('Regime (via ROC)', rocRegime, 'Below 0% Aggressive, above 50% Conservative, else Moderate') +
+        kpi('Tactical Tilt (via Ratio)', tilt, 'Below 7.5 maximise equity, above 13 maximise gold');
+}
 
-    el.innerHTML =
-        kpi('Nifty 50 P/E', peValue, peSub) +
-        kpi('Implied Regime', regimeValue, 'Per Base Risk Profile rule (below 20 Aggressive, 20–50 Moderate, above 50 Conservative)') +
-        kpi('Inflation (CPI)', `${data.inflation_pct.toFixed(2)}%`, `${data.inflation_as_of} — ${data.inflation_source}`);
+function saveMarketInputs() {
+    const keys = ['pe', 'inflation', 'real_gdp', 'ratio', 'roc', 'dema200'];
+    const data = {};
+    keys.forEach(k => {
+        const el = document.getElementById(`mi-${k}`);
+        if (el) data[k] = el.value;
+    });
+    localStorage.setItem(MARKET_INPUTS_STORAGE_KEY, JSON.stringify(data));
+
+    const status = document.getElementById('marketInputsSaveStatus');
+    status.textContent = '✓ Saved';
+    status.style.color = 'var(--success)';
+    setTimeout(() => { status.textContent = ''; }, 2500);
 }
 
 function unlockRules() {
@@ -1513,26 +1572,6 @@ function renderOverallPerformance(data) {
             </tr>`;
     }
     document.getElementById('overallPerfBody').innerHTML = perfRows;
-
-    // ---- Risk metrics ----
-    const rm = data.risk_metrics;
-    const riskKpisEl = document.getElementById('overallRiskKpis');
-    const riskNoteEl = document.getElementById('overallRiskNote');
-    if (rm && rm.available) {
-        riskKpisEl.innerHTML =
-            kpi('Volatility (Annualised)', `${rm.volatility_annualized_pct.toFixed(2)}%`, `${rm.data_points} trading days, ${rm.period_start} – ${rm.period_end}`) +
-            kpi('Max Drawdown', `${rm.max_drawdown_pct.toFixed(2)}%`, 'Largest peak-to-trough decline in that window') +
-            kpi('Sharpe Ratio', rm.sharpe_ratio != null ? rm.sharpe_ratio.toFixed(2) : 'N/A', `Assumes a ${rm.risk_free_rate_assumed_pct}% risk-free rate`);
-        if (rm.short_history_caveat) {
-            riskNoteEl.style.display = 'block';
-            riskNoteEl.innerHTML = '<strong>Short history caveat.</strong> These figures are based on less than a year of data, so they are statistically noisy — treat them as indicative, not definitive, until more history accumulates.';
-        } else {
-            riskNoteEl.style.display = 'none';
-        }
-    } else {
-        riskKpisEl.innerHTML = `<div class="fs-kpi"><span class="fs-kpi-label">Not available</span><span class="fs-kpi-sub">${rm ? rm.reason : 'No data'}</span></div>`;
-        riskNoteEl.style.display = 'none';
-    }
 
     // ---- Asset allocation ----
     const allocRows = (data.asset_allocation || []).map(a => `

@@ -404,11 +404,23 @@
             <div id="rulesTabContent" style="display:none;">
                 <div class="master-content">
                     <section class="section">
-                        <h3 class="section-title">Current Market Status</h3>
-                        <p class="section-subtitle">Live Nifty P/E vs the Base Risk Profile rule &mdash; refreshed on every load</p>
-                        <div class="fs-kpis" id="marketStatusKpis">
-                            <div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>
+                        <h3 class="section-title">Market Inputs</h3>
+                        <p class="section-subtitle">Enter the latest reading for each indicator &mdash; saved in this browser until changed. Nifty P/E starts pre-filled from a live fetch, but you can overwrite it.</p>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr><th>Indicator</th><th style="min-width:140px">Value</th><th>Note</th></tr>
+                                </thead>
+                                <tbody id="marketInputsTable">
+                                    <tr><td colspan="3" class="loading">Loading…</td></tr>
+                                </tbody>
+                            </table>
                         </div>
+                        <div style="margin-top:12px;">
+                            <button class="btn btn-secondary" onclick="saveMarketInputs()">Save</button>
+                            <span id="marketInputsSaveStatus" style="margin-left:10px;font-size:0.85rem;"></span>
+                        </div>
+                        <div class="fs-kpis" id="marketStatusKpis" style="margin-top:18px;"></div>
                     </section>
 
                     <section class="section">
@@ -521,16 +533,6 @@
                                 </tbody>
                             </table>
                         </div>
-                    </section>
-
-                    <!-- Risk Metrics -->
-                    <section class="section">
-                        <h3 class="section-title">Risk Metrics</h3>
-                        <p class="section-subtitle" id="overallRiskSubtitle">Since inception, based on the daily reconstructed portfolio value</p>
-                        <div class="fs-kpis" id="overallRiskKpis">
-                            <div class="fs-kpi"><span class="fs-kpi-label">Loading…</span></div>
-                        </div>
-                        <p class="fs-note" id="overallRiskNote" style="display:none;"></p>
                     </section>
 
                     <!-- Asset Allocation -->

@@ -1,14 +1,11 @@
-"""Live market indicators used by the Allocation Rules tab's compliance
-panel — currently just Nifty 50 P/E (live, scraped from Trendlyne). Real
-inflation/CPI has no scrapable live source (investing.com blocks scripted
-requests with a 403, even with realistic browser headers — a hard block,
-not a missing-header issue), so it stays a manually-updated value, refreshed
-whenever the monthly CPI print comes out.
-
-Nifty P/E regime thresholds match the Allocation Rules tab exactly:
-  < 20            -> Aggressive
-  20 <= p/e <= 50 -> Moderate
-  > 50            -> Conservative
+"""Live Nifty 50 P/E, scraped from Trendlyne, for the Allocation Rules tab's
+Market Inputs panel. This is the only indicator on that panel with a real
+live source — Inflation, Real GDP, BSE500/XAU Ratio, ROC, and the 200 Day
+EMA are all manually entered by the user (investing.com blocks scripted
+CPI fetches with a hard 403 even with realistic browser headers, and there's
+no live source at all for the others), so this module only covers P/E.
+The frontend shows this value as an editable field's starting default, not
+a locked figure — the user can type over it if they want to.
 """
 from __future__ import annotations
 
@@ -19,11 +16,6 @@ import urllib.request
 
 TRENDLYNE_URL = "https://trendlyne.com/equity/PE/NIFTY/1887/nifty-50-price-to-earning-ratios/"
 _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
-# Manually-updated inflation figure — see module docstring for why this
-# isn't live. Update this pair whenever a new CPI print is available.
-CURRENT_INFLATION_PCT = 4.38
-CURRENT_INFLATION_AS_OF = "Jul 2026 CPI print (released 12 Aug 2026)"
 
 _CACHE_TTL_SECONDS = 300  # keep requests to Trendlyne polite
 _cache: dict[str, tuple[float, float]] = {}  # 'pe' -> (fetched_at, value)
@@ -65,16 +57,9 @@ def get_live_nifty_pe(force: bool = False) -> float:
     return value
 
 
-def pe_regime(pe: float) -> str:
-    if pe < 20:
-        return "Aggressive"
-    if pe <= 50:
-        return "Moderate"
-    return "Conservative"
-
-
 def get_market_status(force: bool = False) -> dict:
-    """Everything the Allocation Rules tab's live-status panel needs."""
+    """The live P/E, or a clear error if the fetch failed — the frontend
+    uses this to seed the editable P/E field with a live starting value."""
     try:
         pe = get_live_nifty_pe(force=force)
         pe_error = None
@@ -84,10 +69,6 @@ def get_market_status(force: bool = False) -> dict:
 
     return {
         "nifty_pe": pe,
-        "nifty_pe_regime": pe_regime(pe) if pe is not None else None,
         "nifty_pe_error": pe_error,
         "nifty_pe_source": "Trendlyne",
-        "inflation_pct": CURRENT_INFLATION_PCT,
-        "inflation_as_of": CURRENT_INFLATION_AS_OF,
-        "inflation_source": "Manually updated — investing.com blocks automated fetches (403)",
     }
